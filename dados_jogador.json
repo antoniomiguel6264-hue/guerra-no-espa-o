@@ -1,0 +1,15 @@
+{
+    "moedas": 632,
+    "naves_desbloqueadas": [
+        "Vanguard.png",
+        "Scout.png",
+        "Titan.png",
+        "Phantom.png",
+        "Aegis.png"
+    ],
+    "niveis_melhorias": {
+        "velocidade": 5,
+        "cadencia": 8,
+        "especial": 11
+    }
+}
