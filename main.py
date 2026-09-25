@@ -3,7 +3,7 @@ import sys
 import config
 from audio import iniciar_audio, tocar_som
 from config import FPS, PRETO, BRANCO, AZUL_NEON, AMARELO, VERMELHO, CINZA
-from entidades import Nave, Tiro, TiroEspecial, TiroEspecialAegis, Asteroide, Explosao
+from entidades import Nave, Tiro, TiroEspecial, TiroEspecialAegis, Asteroide, Explosao, gerar_frota_inimiga, calcular_meta_frota
 from salvamento import carregar_dados, salvar_dados
 
 LARGURA = config.LARGURA
@@ -200,6 +200,61 @@ def tela_comandos():
             if evento.type == pygame.KEYDOWN:
                 if evento.key == pygame.K_RETURN or evento.key == pygame.K_KP_ENTER or evento.key == pygame.K_ESCAPE:
                     rodando = False
+
+def tela_selecao_modo():
+    opcoes = [
+        {"nome": "ASTEROIDES", "valor": "asteroides", "descricao": "Missão clássica contra meteoros e obstáculos."},
+        {"nome": "FROTA INIMIGA", "valor": "frota_inimiga", "descricao": "Modo de combate direto contra naves inimigas."},
+    ]
+    indice = 0
+    rodando = True
+
+    while rodando:
+        relogio.tick(60)
+        if fundo_selecao:
+            tela.blit(fundo_selecao, (0, 0))
+        else:
+            tela.fill(PRETO)
+
+        titulo = texto_com_borda(fonte_titulo, "SELEÇÃO DE MODO", AZUL_NEON)
+        tela.blit(titulo, (LARGURA // 2 - titulo.get_width() // 2, 50))
+
+        for idx, opcao in enumerate(opcoes):
+            x = LARGURA // 2 + (idx - 0.5) * 240
+            y = 240
+            largura = 200
+            altura = 180
+            selecionado = idx == indice
+            cor = AMARELO if selecionado else AZUL_NEON
+            rect = pygame.Rect(x - largura // 2, y, largura, altura)
+            pygame.draw.rect(tela, (18, 22, 30), rect, border_radius=18)
+            pygame.draw.rect(tela, cor, rect, 3 if selecionado else 1, border_radius=18)
+
+            txt_nome = texto_com_borda(fonte_hud, opcao["nome"], AMARELO if selecionado else BRANCO)
+            tela.blit(txt_nome, (x - txt_nome.get_width() // 2, y + 40))
+
+            txt_desc = texto_com_borda(fonte_texto, opcao["descricao"], BRANCO)
+            tela.blit(txt_desc, (x - txt_desc.get_width() // 2, y + 90))
+
+        txt_instrucao = texto_com_borda(fonte_hud, "Use [← / →] ou [A / D] para escolher | [ENTER] para confirmar", BRANCO)
+        tela.blit(txt_instrucao, (LARGURA // 2 - txt_instrucao.get_width() // 2, 500))
+        pygame.display.flip()
+
+        for evento in pygame.event.get():
+            if evento.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            if evento.type == pygame.VIDEORESIZE:
+                atualizar_tamanho_tela(evento)
+            if evento.type == pygame.KEYDOWN:
+                if evento.key in (pygame.K_LEFT, pygame.K_a):
+                    indice = (indice - 1) % len(opcoes)
+                elif evento.key in (pygame.K_RIGHT, pygame.K_d):
+                    indice = (indice + 1) % len(opcoes)
+                elif evento.key == pygame.K_RETURN or evento.key == pygame.K_KP_ENTER:
+                    rodando = False
+                    return opcoes[indice]["valor"]
+
 
 def tela_selecao_nave(dados_jogador):
     naves_disponiveis = [
@@ -406,12 +461,14 @@ def tela_melhorias(dados_jogador):
                 elif evento.key == pygame.K_SPACE:
                     rodando = False
 
-def jogo_principal(arquivo_nave, niveis_melhorias, fase_atual=1):
+def jogo_principal(arquivo_nave, niveis_melhorias, fase_atual=1, modo_jogo="asteroides"):
     todos_sprites = pygame.sprite.Group()
     tiros = pygame.sprite.Group()
     asteroides = pygame.sprite.Group()
+    inimigos_frota = pygame.sprite.Group()
     especiais = pygame.sprite.Group()
     explosoes = pygame.sprite.Group()
+    modo_frota = modo_jogo == "frota_inimiga"
 
     if fase_atual == 1:
         fundo_fase = fundo_fase_1
@@ -432,16 +489,16 @@ def jogo_principal(arquivo_nave, niveis_melhorias, fase_atual=1):
         todos_sprites.add(ast)
         asteroides.add(ast)
 
+    frota_inicial = []
+    if modo_frota:
+        frota_inicial = gerar_frota_inimiga(fase_atual)
+        for nave_inimiga in frota_inicial:
+            todos_sprites.add(nave_inimiga)
+            inimigos_frota.add(nave_inimiga)
+
     moedas = 0
     pontos = 0
-    if fase_atual == 1:
-        meta_pontos = 240
-    elif fase_atual == 2:
-        meta_pontos = 480
-    elif fase_atual == 3:
-        meta_pontos = 720
-    else:
-        meta_pontos = 960
+    meta_pontos = calcular_meta_frota(fase_atual, frota_inicial) if modo_frota else 240 + fase_atual * 120
 
     rodando = True
     pausado = False
@@ -564,6 +621,26 @@ def jogo_principal(arquivo_nave, niveis_melhorias, fase_atual=1):
                 todos_sprites.add(novo_ast)
                 asteroides.add(novo_ast)
 
+        if modo_frota:
+            colisoes_frota = pygame.sprite.groupcollide(inimigos_frota, tiros, False, True)
+            for nave_inimiga in colisoes_frota:
+                nave_inimiga.vida -= 1
+                explosao = Explosao(nave_inimiga.rect.centerx, nave_inimiga.rect.centery, cor=(255, 90, 90), raio_inicial=12)
+                todos_sprites.add(explosao)
+                explosoes.add(explosao)
+                if nave_inimiga.vida <= 0:
+                    nave_inimiga.kill()
+                    pontos += 25 + fase_atual * 5
+                    moedas += 2
+                    jogador.adicionar_energia(10)
+                    tocar_som([260, 200], duracao=0.12, volume=0.25)
+
+            if len(inimigos_frota) == 0 and pontos < meta_pontos:
+                nova_frota = gerar_frota_inimiga(fase_atual)
+                for nave_inimiga in nova_frota:
+                    todos_sprites.add(nave_inimiga)
+                    inimigos_frota.add(nave_inimiga)
+
         if jogador.modelo == "aegis" and not teclas[pygame.K_k] and jogador.aegis_ativo:
             jogador.aegis_ativo = False
 
@@ -572,7 +649,7 @@ def jogo_principal(arquivo_nave, niveis_melhorias, fase_atual=1):
             venceu = True
             rodando = False
 
-        if pygame.sprite.spritecollideany(jogador, asteroides):
+        if pygame.sprite.spritecollideany(jogador, asteroides) or (modo_frota and pygame.sprite.spritecollideany(jogador, inimigos_frota)):
             tocar_som([100, 70], duracao=0.18, volume=0.28)
             if jogador.perder_vida():
                 if jogador.vidas <= 0:
@@ -590,20 +667,24 @@ def jogo_principal(arquivo_nave, niveis_melhorias, fase_atual=1):
         txt_fase = texto_com_borda(fonte_hud, f"Fase: {fase_atual}", AZUL_NEON)
         txt_moedas = texto_com_borda(fonte_hud, f"Moedas: {moedas} 🪙", AMARELO)
         txt_vidas = texto_com_borda(fonte_hud, f"Vidas: {'❤️ ' * jogador.vidas}", VERMELHO)
-        
+        txt_frota = texto_com_borda(fonte_hud, f"Frota: {len(inimigos_frota)}", VERMELHO)
+        txt_modo = texto_com_borda(fonte_hud, "MODO: FROTA INIMIGA" if modo_frota else "MODO: ASTEROIDES", AMARELO if modo_frota else AZUL_NEON)
+
         tela.blit(txt_pontos, (20, 20))
         tela.blit(txt_fase, (20, 45))
         tela.blit(txt_moedas, (20, 70))
         tela.blit(txt_vidas, (20, 95))
+        tela.blit(txt_frota, (20, 120))
+        tela.blit(txt_modo, (20, 145))
 
-        pygame.draw.rect(tela, (50, 50, 50), (20, 130, 150, 15))
+        pygame.draw.rect(tela, (50, 50, 50), (20, 175, 150, 15))
         largura_barra = int(1.5 * jogador.energia_especial)
         cor_barra = AZUL_NEON if jogador.energia_especial >= 100 else (0, 150, 200)
-        pygame.draw.rect(tela, cor_barra, (20, 130, largura_barra, 15))
-        pygame.draw.rect(tela, BRANCO, (20, 130, 150, 15), 1)
-        
+        pygame.draw.rect(tela, cor_barra, (20, 175, largura_barra, 15))
+        pygame.draw.rect(tela, BRANCO, (20, 175, 150, 15), 1)
+
         txt_especial = texto_com_borda(fonte_hud, "ESPECIAL [K]", BRANCO if jogador.energia_especial >= 100 else CINZA)
-        tela.blit(txt_especial, (180, 128))
+        tela.blit(txt_especial, (180, 173))
         desenhar_botao_pausa(tela, botao_pausa, "Pausar", ativo=False)
 
         pygame.display.flip()
@@ -758,6 +839,7 @@ if __name__ == "__main__":
     
     while True:
         tela_boas_vindas()
+        modo_jogo = tela_selecao_modo()
         nave_escolhida = tela_selecao_nave(dados_jogador)
         tela_melhorias(dados_jogador)
 
@@ -768,7 +850,7 @@ if __name__ == "__main__":
 
         while fase_atual <= 4:
             tela_intro_fase(fase_atual)
-            pontos_partida, moedas_partida, venceu = jogo_principal(nave_escolhida, dados_jogador["niveis_melhorias"], fase_atual)
+            pontos_partida, moedas_partida, venceu = jogo_principal(nave_escolhida, dados_jogador["niveis_melhorias"], fase_atual, modo_jogo)
             pontos_totais += pontos_partida
             moedas_totais += moedas_partida
 
