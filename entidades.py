@@ -35,7 +35,8 @@ class Nave(pygame.sprite.Sprite):
         self.vx = 0
         self.vy = 0
         
-        self.vidas = 4
+        self.vida_maxima = 100
+        self.vida = self.vida_maxima
         self.invulneravel = False
         self.tempo_invulneravel = 0
         self.aegis_ativo = False
@@ -93,13 +94,17 @@ class Nave(pygame.sprite.Sprite):
             if pygame.time.get_ticks() - self.tempo_invulneravel > 1500:
                 self.invulneravel = False
 
-    def perder_vida(self):
+    def perder_vida(self, dano=20):
         if not self.invulneravel:
-            self.vidas -= 1
+            self.vida = max(0, self.vida - dano)
             self.invulneravel = True
             self.tempo_invulneravel = pygame.time.get_ticks()
-            return True 
-        return False 
+            return self.vida <= 0
+        return False
+
+    def recuperar_vida(self, quantidade=10):
+        self.vida = min(self.vida_maxima, self.vida + quantidade)
+        return self.vida
 
     def adicionar_energia(self, quantidade):
         self.energia_especial += self.bonus_energia
@@ -183,6 +188,29 @@ class TiroEspecial(pygame.sprite.Sprite):
     def update(self):
         self.rect.x += self.vx
         self.rect.y += self.vy
+        if self.rect.right < 0 or self.rect.left > config.LARGURA or self.rect.bottom < 0 or self.rect.top > config.ALTURA:
+            self.kill()
+
+
+class TiroInimigo(pygame.sprite.Sprite):
+    def __init__(self, x, y, angulo, dano=1, velocidade=6):
+        super().__init__()
+        self.dano = dano
+        self.image_original = pygame.Surface((6, 16), pygame.SRCALPHA)
+        pygame.draw.rect(self.image_original, (255, 120, 120), (2, 0, 2, 16))
+        self.angulo = angulo
+        self.image = pygame.transform.rotate(self.image_original, self.angulo - 90)
+        self.rect = self.image.get_rect(center=(x, y))
+
+        rad = math.radians(self.angulo)
+        self.velocidade = velocidade
+        self.vx = math.cos(rad) * self.velocidade
+        self.vy = -math.sin(rad) * self.velocidade
+
+    def update(self):
+        self.rect.x += self.vx
+        self.rect.y += self.vy
+
         if self.rect.right < 0 or self.rect.left > config.LARGURA or self.rect.bottom < 0 or self.rect.top > config.ALTURA:
             self.kill()
 
@@ -315,11 +343,12 @@ class NaveInimiga(pygame.sprite.Sprite):
     def __init__(self, x, y, fase_atual=1):
         super().__init__()
         self.fase = fase_atual
-        self.vida = 2 + fase_atual
+        self.vida = 3 + fase_atual
         self.tamanho = 42 + fase_atual * 4
+        self.cooldown_tiro = random.randint(70, 120)
 
         self.image_original = None
-        for nome_arquivo in ("inimigo.jpg", "flanejante.jpg"):
+        for nome_arquivo in ("inimigo.png", "inimigo.jpg", "flanejante.png", "flanejante.jpg"):
             try:
                 imagem = pygame.image.load(nome_arquivo).convert_alpha()
                 self.image_original = pygame.transform.scale(imagem, (self.tamanho, self.tamanho))
@@ -344,6 +373,7 @@ class NaveInimiga(pygame.sprite.Sprite):
 
     def update(self):
         self.tempo_bob += 1
+        self.cooldown_tiro = max(0, self.cooldown_tiro - 1)
         self.rect.y += self.velocidadey
         self.rect.x += self.velocidadex + math.sin(self.tempo_bob / 18) * 0.8
 
@@ -352,6 +382,19 @@ class NaveInimiga(pygame.sprite.Sprite):
 
         if self.rect.left < 0 or self.rect.right > config.LARGURA:
             self.velocidadex *= -1
+
+    def criar_tiro(self, alvo):
+        if alvo is None:
+            return None
+
+        dx = alvo.rect.centerx - self.rect.centerx
+        dy = alvo.rect.centery - self.rect.centery
+        if dx == 0 and dy == 0:
+            return None
+
+        angulo = math.degrees(math.atan2(-dy, dx))
+        self.cooldown_tiro = random.randint(70, 120)
+        return TiroInimigo(self.rect.centerx, self.rect.centery, angulo, dano=1, velocidade=6)
 
 
 def gerar_frota_inimiga(fase_atual=1):
@@ -368,6 +411,12 @@ def gerar_frota_inimiga(fase_atual=1):
         frota.append(nave)
 
     return frota
+
+
+def gerar_frota_infinita(pontos=0):
+    # O modo infinito foi ajustado para sobreviver apenas com asteroides.
+    # Nenhuma frota inimiga deve ser gerada nesse modo.
+    return []
 
 
 def calcular_meta_frota(fase_atual=1, frota=None):
