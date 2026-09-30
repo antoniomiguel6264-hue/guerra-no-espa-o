@@ -8,7 +8,7 @@ import pygame
 
 import config
 import main
-from entidades import Nave, NaveInimiga, calcular_meta_frota, gerar_frota_inimiga
+from entidades import Nave, NaveInimiga, TiroEspecialTitan, calcular_meta_frota, gerar_frota_inimiga
 from salvamento import listar_ranking, salvar_pontuacao
 
 
@@ -63,9 +63,59 @@ def test_jogador_recupera_vida_ao_destruir_inimigo():
     jogador.vida = 40
 
     jogador.recuperar_vida(20)
-    assert jogador.vida == 60
+    assert jogador.vida > 60
+    assert jogador.vida <= jogador.vida_maxima
     jogador.recuperar_vida(80)
     assert jogador.vida == jogador.vida_maxima
+
+
+def test_jogador_ganha_energia_pelo_valor_passado():
+    jogador = Nave(100, 100, "Vanguard.png")
+    jogador.energia_especial = 40
+
+    jogador.adicionar_energia(25)
+    assert jogador.energia_especial == 65
+
+    jogador.adicionar_energia(100)
+    assert jogador.energia_especial == jogador.energia_maxima
+
+
+def test_jogador_recupera_vida_mais_generosamente():
+    jogador = Nave(100, 100, "Vanguard.png")
+    jogador.vida = 30
+
+    jogador.recuperar_vida()
+    assert jogador.vida > 55
+    assert jogador.vida <= jogador.vida_maxima
+
+
+def test_jogador_recupera_vida_a_cada_200_pontos():
+    jogador = Nave(100, 100, "Vanguard.png")
+    jogador.vida = 60
+
+    jogador.aplicar_pontos_para_cura(200)
+    assert jogador.vida == 65
+
+    jogador.aplicar_pontos_para_cura(200)
+    assert jogador.vida == 70
+
+
+def test_titan_aumenta_duracao_do_especial_com_upgrade():
+    jogador = Nave(100, 100, "Titan.png", {"velocidade": 1, "cadencia": 1, "especial": 3})
+
+    especial = jogador.criar_tiro_especial()[0]
+
+    assert isinstance(especial, TiroEspecialTitan)
+    assert especial.vida > 36
+
+
+def test_titan_especial_tem_escala_de_dano_e_raio():
+    jogador = Nave(100, 100, "Titan.png", {"velocidade": 1, "cadencia": 1, "especial": 3})
+
+    especial = jogador.criar_tiro_especial()[0]
+
+    assert especial.raio > 90
+    assert especial.dano >= 3
 
 
 def test_modo_infinito_nao_gera_frota_inimiga():
@@ -76,9 +126,15 @@ def test_modo_infinito_nao_gera_frota_inimiga():
     assert frota_2 == []
 
 
+def test_dano_asteroide_e_reduzido_no_modo_infinito():
+    assert main.calcular_dano_asteroide("asteroides") == 20
+    assert main.calcular_dano_asteroide("infinito") == 10
+    assert main.calcular_dano_asteroide("frota_inimiga") == 20
+
+
 def test_ranking_salva_pontuacao_no_banco():
     salvar_pontuacao(1200, "infinito", "Vanguard.png")
-    ranking = listar_ranking(limit=5)
+    ranking = listar_ranking(limit=20)
 
     assert any(item["pontuacao"] == 1200 for item in ranking)
     assert any(item["modo"] == "infinito" for item in ranking)

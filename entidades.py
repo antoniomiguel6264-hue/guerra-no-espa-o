@@ -1,4 +1,8 @@
 import os
+
+os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
+
 import pygame
 import random
 import math
@@ -40,10 +44,12 @@ class Nave(pygame.sprite.Sprite):
         self.invulneravel = False
         self.tempo_invulneravel = 0
         self.aegis_ativo = False
+        self.pontos_para_cura = 0
         
         self.energia_especial = 0
         self.energia_maxima = 100
         self.bonus_energia = 20 + (self.niveis["especial"] - 1) * 5
+        self.duracao_especial = 36 + max(0, self.niveis["especial"] - 1) * 12
 
     def update(self, teclas=None):
         if teclas is None:
@@ -102,12 +108,33 @@ class Nave(pygame.sprite.Sprite):
             return self.vida <= 0
         return False
 
-    def recuperar_vida(self, quantidade=10):
+    def recuperar_vida(self, quantidade=35):
+        if quantidade <= 0:
+            return self.vida
+
+        if self.vida < self.vida_maxima * 0.5:
+            quantidade = int(quantidade * 1.5)
+
         self.vida = min(self.vida_maxima, self.vida + quantidade)
         return self.vida
 
+    def aplicar_pontos_para_cura(self, pontos_ganhos=0):
+        if pontos_ganhos <= 0:
+            return self.vida
+
+        self.pontos_para_cura += pontos_ganhos
+        recuperacoes = self.pontos_para_cura // 200
+        if recuperacoes > 0:
+            self.pontos_para_cura -= recuperacoes * 200
+            cura = recuperacoes * max(1, int(self.vida_maxima * 0.05))
+            self.recuperar_vida(cura)
+        return self.vida
+
     def adicionar_energia(self, quantidade):
-        self.energia_especial += self.bonus_energia
+        if quantidade is None:
+            quantidade = 0
+        quantidade = max(0, int(quantidade))
+        self.energia_especial += quantidade
         if self.energia_especial > self.energia_maxima:
             self.energia_especial = self.energia_maxima
 
@@ -132,7 +159,8 @@ class Nave(pygame.sprite.Sprite):
         if self.modelo == "scout":
             return [TiroEspecialLaser(x, y, self.angulo)]
         if self.modelo == "titan":
-            return [TiroEspecialTitan(x, y)]
+            duracao = 36 + max(0, self.niveis["especial"] - 1) * 12
+            return [TiroEspecialTitan(x, y, duracao=duracao, nivel=self.niveis["especial"])]
         if self.modelo == "phantom":
             tiros = []
             for i in range(7):
@@ -233,27 +261,55 @@ class TiroEspecialLaser(TiroEspecial):
 
 
 class TiroEspecialTitan(TiroEspecial):
-    def __init__(self, x, y):
+    def __init__(self, x, y, duracao=36, nivel=1):
         super().__init__(x, y, 0, tipo="titan", cor=(255, 180, 70), velocidade=0)
-        raio = int(90 * math.sqrt(6))
-        tamanho = raio * 2 + 20
-        self.image_original = pygame.Surface((tamanho, tamanho), pygame.SRCALPHA)
+        self.nivel = max(1, nivel)
+        self.raio = int(55 * math.sqrt(6)) + max(0, self.nivel - 1) * 10
+        self.dano = 2 + max(0, self.nivel - 1) * 2
+        self.dano_central = 5 + max(0, self.nivel - 1) * 3
+        self.pulso = 0.0
+        self.tempo_total = float(max(1, duracao))
+        self.vida = duracao
+        self.efeito_fim = 0.0
+        self.atualizar_visual()
+
+    def atualizar_visual(self):
+        tamanho = self.raio * 2 + 40
+        imagem = pygame.Surface((tamanho, tamanho), pygame.SRCALPHA)
         centro = (tamanho // 2, tamanho // 2)
+        brilho = 0.5 + 0.5 * math.sin(self.pulso)
+        fim = min(1.0, self.efeito_fim)
 
-        for r in range(raio, max(16, raio - 30), -12):
-            alpha = max(30, 200 - (raio - r) * 8)
-            pygame.draw.circle(self.image_original, (255, 140, 40, alpha), centro, r, 2)
+        for indice, r in enumerate(range(self.raio + 18, max(16, self.raio - 30), -12)):
+            alpha = int(40 + (1 - indice / 8) * 120 + brilho * 90 + fim * 70)
+            raio = r + int(10 * math.sin(self.pulso * 2 + indice)) + int(fim * 18)
+            pygame.draw.circle(imagem, (255, 140 + indice * 8, 40, alpha), centro, raio, 2)
 
-        pygame.draw.circle(self.image_original, (255, 210, 120), centro, raio)
-        pygame.draw.circle(self.image_original, (255, 255, 200), centro, max(12, raio // 2))
-        pygame.draw.circle(self.image_original, (70, 180, 255), centro, max(18, raio // 2 + 12), 7)
-        pygame.draw.circle(self.image_original, (255, 120, 30), centro, max(6, raio // 5), 3)
+        ring_externo = int(self.raio + 18 + 10 * math.sin(self.pulso * 3) + fim * 28)
+        pygame.draw.circle(imagem, (255, 175, 70, 130 + int(60 * brilho)), centro, ring_externo)
+        pygame.draw.circle(imagem, (255, 220, 120, 200), centro, int(self.raio * (0.72 + brilho * 0.18) + fim * 12))
+        pygame.draw.circle(imagem, (255, 255, 200, 200), centro, max(14, self.raio // 2 + int(6 * math.sin(self.pulso)) + int(fim * 8)))
+        pygame.draw.circle(imagem, (70, 180, 255, 180), centro, max(18, self.raio // 2 + 12), 7)
+        pygame.draw.circle(imagem, (255, 120, 30, 200), centro, max(5, self.raio // 5), 3)
 
-        self.image = self.image_original
-        self.rect = self.image.get_rect(center=(x, y))
-        self.vida = 36
+        for angulo in range(0, 360, 45):
+            rad = math.radians(angulo + self.pulso * 40)
+            x = int(centro[0] + math.cos(rad) * (self.raio + 20 + fim * 12))
+            y = int(centro[1] + math.sin(rad) * (self.raio + 20 + fim * 12))
+            pygame.draw.circle(imagem, (255, 255, 200, 135), (x, y), 5 + int(2 * math.sin(self.pulso + angulo)))
+
+        if fim > 0:
+            onda = int(self.raio * (1.1 + fim * 1.5))
+            pygame.draw.circle(imagem, (255, 255, 255, int(80 * (1.0 - fim))), centro, onda, 4)
+
+        self.image = imagem
+        self.rect = self.image.get_rect(center=(self.rect.centerx, self.rect.centery)) if hasattr(self, 'rect') else self.image.get_rect()
 
     def update(self):
+        self.pulso += 0.35
+        if self.vida <= 8:
+            self.efeito_fim = min(1.0, self.efeito_fim + 0.14)
+        self.atualizar_visual()
         self.vida -= 1
         if self.vida <= 0:
             self.kill()

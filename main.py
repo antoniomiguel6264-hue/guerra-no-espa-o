@@ -1,4 +1,5 @@
 import random
+import math
 import pygame
 import sys
 import config
@@ -93,6 +94,17 @@ def criar_asteroides_infinito(pontos=0, fase_atual=1, quantidade_minima=8):
         asteroides.add(ast)
 
     return asteroides
+
+
+def calcular_dano_asteroide(modo_jogo="asteroides"):
+    if modo_jogo == "infinito":
+        return 10
+    return 20
+
+
+def calcular_duracao_especial_titan(nivel=1):
+    frames = 36 + max(0, nivel - 1) * 12
+    return frames / FPS
 
 
 fonte_titulo = pygame.font.SysFont("Noto Sans", 32, bold=True)
@@ -487,8 +499,8 @@ def tela_melhorias(dados_jogador):
             custo_atual = custos[chave] * nivel_atual
 
             if offset == 0:
-                largura = 200
-                altura = 120
+                largura = 220
+                altura = 140
                 alpha = 255
                 borda = AMARELO
                 texto_cor = BRANCO
@@ -515,6 +527,11 @@ def tela_melhorias(dados_jogador):
             tela.blit(nome, (x - nome.get_width() // 2, y + 18))
             tela.blit(nivel, (x - nivel.get_width() // 2, y + 48))
             tela.blit(valor, (x - valor.get_width() // 2, y + 72))
+
+            if chave == "especial":
+                duracao = calcular_duracao_especial_titan(nivel_atual)
+                txt_duracao = texto_com_borda(fonte_texto, f"Duração: {duracao:.1f}s", AZUL_NEON)
+                tela.blit(txt_duracao, (x - txt_duracao.get_width() // 2, y + 96))
 
         txt_instrucao = texto_com_borda(fonte_hud, "[SETAS] Mudar | [ENTER] Comprar | [ESPAÇO] Ir para Missão", BRANCO)
         tela.blit(txt_instrucao, (LARGURA//2 - txt_instrucao.get_width()//2, 500))
@@ -704,6 +721,7 @@ def jogo_principal(arquivo_nave, niveis_melhorias, fase_atual=1, modo_jogo="aste
             todos_sprites.add(explosao)
             explosoes.add(explosao)
             pontos += 10
+            jogador.aplicar_pontos_para_cura(10)
             moedas += 1
             jogador.adicionar_energia(20)
             tocar_som([180, 120], duracao=0.15, volume=0.25)
@@ -714,6 +732,43 @@ def jogo_principal(arquivo_nave, niveis_melhorias, fase_atual=1, modo_jogo="aste
                 todos_sprites.add(novo_ast)
                 asteroides.add(novo_ast)
 
+        for especial in list(especiais):
+            if getattr(especial, "tipo", None) == "titan":
+                for ast in list(asteroides):
+                    distancia = math.hypot(ast.rect.centerx - especial.rect.centerx, ast.rect.centery - especial.rect.centery)
+                    if distancia <= especial.raio:
+                        dano_ast = especial.dano_central if distancia <= especial.raio * 0.5 else especial.dano
+                        cor_explosao = (255, 180, 90)
+                        explosao = Explosao(ast.rect.centerx, ast.rect.centery, cor=cor_explosao, raio_inicial=16)
+                        todos_sprites.add(explosao)
+                        explosoes.add(explosao)
+                        ast.kill()
+                        pontos += 8 + int(dano_ast)
+                        jogador.aplicar_pontos_para_cura(8 + int(dano_ast))
+                        moedas += 1
+                        tocar_som([520, 700, 820], duracao=0.2, volume=0.3)
+                        if pontos < meta_pontos:
+                            novo_ast = Asteroide(fase_atual)
+                            novo_ast.velocidadey = max(1, novo_ast.velocidadey - 2)
+                            todos_sprites.add(novo_ast)
+                            asteroides.add(novo_ast)
+
+                for nave_inimiga in list(inimigos_frota):
+                    distancia = math.hypot(nave_inimiga.rect.centerx - especial.rect.centerx, nave_inimiga.rect.centery - especial.rect.centery)
+                    if distancia <= especial.raio:
+                        dano_nave = especial.dano_central if distancia <= especial.raio * 0.5 else especial.dano
+                        nave_inimiga.vida -= dano_nave
+                        explosao = Explosao(nave_inimiga.rect.centerx, nave_inimiga.rect.centery, cor=(255, 130, 90), raio_inicial=12)
+                        todos_sprites.add(explosao)
+                        explosoes.add(explosao)
+                        if nave_inimiga.vida <= 0:
+                            nave_inimiga.kill()
+                            pontos += 18 + fase_atual * 4 + dano_nave
+                            jogador.aplicar_pontos_para_cura(18 + fase_atual * 4 + dano_nave)
+                            moedas += 2
+                            jogador.adicionar_energia(12)
+                            tocar_som([260, 200], duracao=0.12, volume=0.25)
+
         colisoes_especial = pygame.sprite.groupcollide(asteroides, especiais, True, False)
         for ast in colisoes_especial:
             cor_explosao = (255, 110, 255)
@@ -723,6 +778,7 @@ def jogo_principal(arquivo_nave, niveis_melhorias, fase_atual=1, modo_jogo="aste
             todos_sprites.add(explosao)
             explosoes.add(explosao)
             pontos += 15
+            jogador.aplicar_pontos_para_cura(15)
             moedas += 2
             tocar_som([520, 700, 820], duracao=0.2, volume=0.3)
             if pontos < meta_pontos:
@@ -748,9 +804,10 @@ def jogo_principal(arquivo_nave, niveis_melhorias, fase_atual=1, modo_jogo="aste
                 if nave_inimiga.vida <= 0:
                     nave_inimiga.kill()
                     pontos += 25 + fase_atual * 5
+                    jogador.aplicar_pontos_para_cura(25 + fase_atual * 5)
                     moedas += 2
-                    jogador.recuperar_vida(10)
-                    jogador.adicionar_energia(10)
+                    jogador.recuperar_vida(35 + max(0, fase_atual - 1) * 6)
+                    jogador.adicionar_energia(12)
                     tocar_som([260, 200], duracao=0.12, volume=0.25)
 
             if len(inimigos_frota) == 0 and pontos < meta_pontos:
@@ -767,9 +824,13 @@ def jogo_principal(arquivo_nave, niveis_melhorias, fase_atual=1, modo_jogo="aste
             rodando = False
 
         tiros_jogador_colidindo = pygame.sprite.spritecollide(jogador, tiros_inimigos, True)
-        if pygame.sprite.spritecollideany(jogador, asteroides) or (modo_frota and pygame.sprite.spritecollideany(jogador, inimigos_frota)) or tiros_jogador_colidindo:
+        colidiu_com_asteroide = pygame.sprite.spritecollideany(jogador, asteroides)
+        dano_asteroide = calcular_dano_asteroide(modo_jogo)
+
+        if colidiu_com_asteroide or (modo_frota and pygame.sprite.spritecollideany(jogador, inimigos_frota)) or tiros_jogador_colidindo:
             tocar_som([100, 70], duracao=0.18, volume=0.28)
-            if jogador.perder_vida():
+            dano_aplicado = dano_asteroide if colidiu_com_asteroide else 20
+            if jogador.perder_vida(dano_aplicado):
                 pygame.time.delay(500)
                 rodando = False
 
@@ -808,6 +869,15 @@ def jogo_principal(arquivo_nave, niveis_melhorias, fase_atual=1, modo_jogo="aste
 
         txt_especial = texto_com_borda(fonte_hud, "ESPECIAL [K]", BRANCO if jogador.energia_especial >= 100 else CINZA)
         tela.blit(txt_especial, (180, 173))
+
+        if jogador.modelo == "titan":
+            especial_ativa = next((especial for especial in especiais if getattr(especial, "tipo", None) == "titan"), None)
+            restante = max(0, especial_ativa.vida / FPS) if especial_ativa is not None else 0
+            texto_duracao = "Titan: pronto" if especial_ativa is None else f"Titan: {restante:.1f}s"
+            cor_duracao = AZUL_NEON if especial_ativa is None else AMARELO
+            txt_duracao = texto_com_borda(fonte_hud, texto_duracao, cor_duracao)
+            tela.blit(txt_duracao, (20, 205))
+
         desenhar_botao_pausa(tela, botao_pausa, "Pausar", ativo=False)
 
         pygame.display.flip()
