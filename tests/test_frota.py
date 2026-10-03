@@ -4,6 +4,15 @@ import threading
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
+
+def test_arquivos_do_projeto_sao_resolvidos_no_diretorio_do_repositorio():
+    import main
+    import salvamento
+
+    assert os.path.isabs(salvamento.ARQUIVO_DADOS)
+    assert os.path.isabs(salvamento.ARQUIVO_RANKING)
+    assert os.path.commonpath([os.path.dirname(salvamento.ARQUIVO_DADOS), os.path.dirname(main.__file__)]) == os.path.dirname(main.__file__)
+
 import pygame
 
 import config

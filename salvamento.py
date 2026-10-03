@@ -3,8 +3,9 @@ import os
 import sqlite3
 from datetime import datetime
 
-ARQUIVO_DADOS = "dados_jogador.json"
-ARQUIVO_RANKING = "ranking.db"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+ARQUIVO_DADOS = os.path.join(BASE_DIR, "dados_jogador.json")
+ARQUIVO_RANKING = os.path.join(BASE_DIR, "ranking.db")
 
 
 def carregar_dados():

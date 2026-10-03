@@ -1,5 +1,6 @@
 import random
 import math
+import os
 import pygame
 import sys
 import config
@@ -7,6 +8,17 @@ from audio import iniciar_audio, tocar_som
 from config import FPS, PRETO, BRANCO, AZUL_NEON, AMARELO, VERMELHO, CINZA
 from entidades import Nave, NaveInimiga, Tiro, TiroEspecial, TiroEspecialAegis, Asteroide, Explosao, gerar_frota_inimiga, gerar_frota_infinita, calcular_meta_frota
 from salvamento import carregar_dados, salvar_dados, salvar_pontuacao, listar_ranking
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+
+def resolver_caminho_arquivo(nome_arquivo):
+    if not nome_arquivo:
+        return nome_arquivo
+    if os.path.isabs(nome_arquivo):
+        return nome_arquivo
+    return os.path.join(BASE_DIR, nome_arquivo)
+
 
 LARGURA = config.LARGURA
 ALTURA = config.ALTURA
@@ -113,7 +125,7 @@ fonte_hud = pygame.font.SysFont("Noto Sans", 16, bold=True)
 
 # Carrega a imagem de fundo da tela de boas-vindas
 try:
-    fundo_img = pygame.image.load("chagada.jpg").convert()
+    fundo_img = pygame.image.load(resolver_caminho_arquivo("chagada.jpg")).convert()
     fundo_img = pygame.transform.scale(fundo_img, (LARGURA, ALTURA))
 except Exception as e:
     print(f"Erro ao carregar chagada.jpg: {e}. Usando fundo preto.")
@@ -122,35 +134,35 @@ except Exception as e:
 # Fundos das fases do jogo
 fundo_fase_1 = None
 try:
-    fundo_fase_1 = pygame.image.load("fase1.jpg").convert()
+    fundo_fase_1 = pygame.image.load(resolver_caminho_arquivo("fase1.jpg")).convert()
     fundo_fase_1 = pygame.transform.scale(fundo_fase_1, (LARGURA, ALTURA))
 except Exception as e:
     print(f"Erro ao carregar fase1.jpg: {e}. Usando fundo preto.")
 
 fundo_fase_2 = None
 try:
-    fundo_fase_2 = pygame.image.load("fase2.jpg").convert()
+    fundo_fase_2 = pygame.image.load(resolver_caminho_arquivo("fase2.jpg")).convert()
     fundo_fase_2 = pygame.transform.scale(fundo_fase_2, (LARGURA, ALTURA))
 except Exception as e:
     print(f"Erro ao carregar fase2.jpg: {e}. Usando fundo preto.")
 
 fundo_fase_3 = None
 try:
-    fundo_fase_3 = pygame.image.load("fase3.jpg").convert()
+    fundo_fase_3 = pygame.image.load(resolver_caminho_arquivo("fase3.jpg")).convert()
     fundo_fase_3 = pygame.transform.scale(fundo_fase_3, (LARGURA, ALTURA))
 except Exception as e:
     print(f"Erro ao carregar fase3.jpg: {e}. Usando fundo preto.")
 
 fundo_fase_4 = None
 try:
-    fundo_fase_4 = pygame.image.load("fase4.jpg").convert()
+    fundo_fase_4 = pygame.image.load(resolver_caminho_arquivo("fase4.jpg")).convert()
     fundo_fase_4 = pygame.transform.scale(fundo_fase_4, (LARGURA, ALTURA))
 except Exception as e:
     print(f"Erro ao carregar fase4.jpg: {e}. Usando fundo preto.")
 
 # Fundo usado na tela de seleção de nave
 try:
-    fundo_selecao = pygame.image.load("tela preta.jpg").convert()
+    fundo_selecao = pygame.image.load(resolver_caminho_arquivo("tela preta.jpg")).convert()
     fundo_selecao = pygame.transform.scale(fundo_selecao, (LARGURA, ALTURA))
 except Exception as e:
     print(f"Erro ao carregar tela preta.jpg: {e}. Usando fundo preto.")
@@ -159,7 +171,7 @@ except Exception as e:
 # Fundo específico da tela de fim de jogo
 fundo_fim = None
 try:
-    fundo_fim = pygame.image.load("fim.jpg").convert()
+    fundo_fim = pygame.image.load(resolver_caminho_arquivo("fim.jpg")).convert()
     fundo_fim = pygame.transform.scale(fundo_fim, (LARGURA, ALTURA))
 except Exception as e:
     print(f"Erro ao carregar fim.jpg: {e}. Usando fundo preto.")
@@ -363,7 +375,7 @@ def tela_selecao_nave(dados_jogador):
     imagens_naves = {}
     for nave in naves_disponiveis:
         try:
-            imagem = pygame.image.load(nave["arquivo"]).convert_alpha()
+            imagem = pygame.image.load(resolver_caminho_arquivo(nave["arquivo"])).convert_alpha()
         except Exception:
             imagem = pygame.Surface((200, 200), pygame.SRCALPHA)
             pygame.draw.rect(imagem, AZUL_NEON, (0, 0, 200, 200), border_radius=20)

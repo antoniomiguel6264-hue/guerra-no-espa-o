@@ -4,6 +4,16 @@ os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
 import pygame
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+
+def resolver_caminho_arquivo(nome_arquivo):
+    if not nome_arquivo:
+        return nome_arquivo
+    if os.path.isabs(nome_arquivo):
+        return nome_arquivo
+    return os.path.join(BASE_DIR, nome_arquivo)
 import random
 import math
 import config
@@ -13,8 +23,9 @@ class Nave(pygame.sprite.Sprite):
     def __init__(self, x, y, imagem_path, niveis_melhorias=None):
         super().__init__()
         self.modelo = os.path.splitext(os.path.basename(imagem_path))[0].lower()
+        caminho_imagem = resolver_caminho_arquivo(imagem_path)
         try:
-            self.image_original = pygame.image.load(imagem_path).convert_alpha()
+            self.image_original = pygame.image.load(caminho_imagem).convert_alpha()
             self.image_original = pygame.transform.scale(self.image_original, (68, 68))
         except Exception as e:
             print(f"Erro ao carregar {imagem_path}: {e}. Usando placeholder.")
@@ -406,7 +417,7 @@ class NaveInimiga(pygame.sprite.Sprite):
         self.image_original = None
         for nome_arquivo in ("inimigo.png", "inimigo.jpg", "flanejante.png", "flanejante.jpg"):
             try:
-                imagem = pygame.image.load(nome_arquivo).convert_alpha()
+                imagem = pygame.image.load(resolver_caminho_arquivo(nome_arquivo)).convert_alpha()
                 self.image_original = pygame.transform.scale(imagem, (self.tamanho, self.tamanho))
                 break
             except Exception:
@@ -488,7 +499,7 @@ class Asteroide(pygame.sprite.Sprite):
         self.fase_atual = fase_atual
 
         try:
-            self.image_original = pygame.image.load("asteroide.png").convert_alpha()
+            self.image_original = pygame.image.load(resolver_caminho_arquivo("asteroide.png")).convert_alpha()
             self.image_original = pygame.transform.scale(self.image_original, (self.tamanho, self.tamanho))
         except Exception as e:
             print(f"Erro ao carregar imagem de asteroide: {e}. Usando placeholder.")
