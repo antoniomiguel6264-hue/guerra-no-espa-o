@@ -1,13 +1,38 @@
 import random
 import math
 import os
+
 import pygame
 import sys
 import config
-from audio import iniciar_audio, tocar_som
+from audio import tocar_som
 from config import FPS, PRETO, BRANCO, AZUL_NEON, AMARELO, VERMELHO, CINZA
 from entidades import Nave, NaveInimiga, Tiro, TiroEspecial, TiroEspecialAegis, Asteroide, Explosao, gerar_frota_inimiga, gerar_frota_infinita, calcular_meta_frota
-from salvamento import carregar_dados, salvar_dados, salvar_pontuacao, listar_ranking
+from game.balance import calcular_cura_inimigo_derrotado
+from game.achievements import (
+    CONQUISTAS_POR_ID,
+    TEMPO_SOBREVIVENTE_MS,
+    acumular_tempo_sobrevivencia,
+    desbloquear_conquista,
+    listar_conquistas,
+)
+from game.resources import criar_recursos_jogo
+from game.session import SessionServices, run_game_session
+from game.ui import desenhar_botao_pausa as _desenhar_botao_pausa
+from game.ui import desenhar_tela_jogo, texto_com_borda
+from game.screens import (
+    tela_boas_vindas as _tela_boas_vindas,
+    tela_comandos as _tela_comandos,
+    tela_ranking as _tela_ranking,
+    tela_conquistas as _tela_conquistas,
+    tela_selecao_modo as _tela_selecao_modo,
+    tela_intro_fase as _tela_intro_fase,
+    tela_vitoria as _tela_vitoria,
+    tela_game_over as _tela_game_over,
+    tela_selecao_nave as _tela_selecao_nave,
+    tela_melhorias as _tela_melhorias,
+)
+from salvamento import carregar_dados, normalizar_dados_jogador, salvar_dados, salvar_pontuacao, listar_ranking
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -20,53 +45,63 @@ def resolver_caminho_arquivo(nome_arquivo):
     return os.path.join(BASE_DIR, nome_arquivo)
 
 
+def validar_dados_jogador(dados_jogador):
+    return normalizar_dados_jogador(dados_jogador)
+
+
 LARGURA = config.LARGURA
 ALTURA = config.ALTURA
+recursos_jogo = None
+tela = None
+modo_tela = None
+relogio = None
+fonte_titulo = None
+fonte_texto = None
+fonte_hud = None
+fundo_img = None
+fundo_fase_1 = None
+fundo_fase_2 = None
+fundo_fase_3 = None
+fundo_fase_4 = None
+fundo_selecao = None
+fundo_fim = None
 
-pygame.init()
-iniciar_audio()
-tela = pygame.display.set_mode((LARGURA, ALTURA), pygame.RESIZABLE)
-pygame.display.set_caption("Space Shooter - Soldado Cósmico")
-relogio = pygame.time.Clock()
+
+def inicializar_app():
+    global ALTURA, LARGURA, fundo_fase_1, fundo_fase_2, fundo_fase_3
+    global fundo_fase_4, fundo_fim, fundo_img, fundo_selecao
+    global fonte_hud, fonte_texto, fonte_titulo, modo_tela, recursos_jogo
+    global relogio, tela
+
+    if recursos_jogo is None:
+        recursos_jogo = criar_recursos_jogo(resolver_caminho_arquivo)
+
+    tela = recursos_jogo.tela
+    modo_tela = recursos_jogo.modo_tela
+    relogio = recursos_jogo.relogio
+    fonte_titulo, fonte_texto, fonte_hud = recursos_jogo.fontes
+    fundo_img = recursos_jogo.fundo_img
+    fundo_fase_1, fundo_fase_2, fundo_fase_3, fundo_fase_4 = recursos_jogo.fundos_fase
+    fundo_selecao = recursos_jogo.fundo_selecao
+    fundo_fim = recursos_jogo.fundo_fim
+    LARGURA, ALTURA = tela.get_size()
+    config.LARGURA, config.ALTURA = LARGURA, ALTURA
+    return recursos_jogo
 
 
 def atualizar_tamanho_tela(evento=None):
     global LARGURA, ALTURA
-    if evento is not None and evento.type == pygame.VIDEORESIZE:
-        config.LARGURA = evento.w
-        config.ALTURA = evento.h
-        LARGURA, ALTURA = config.LARGURA, config.ALTURA
-        pygame.display.set_mode((LARGURA, ALTURA), pygame.RESIZABLE)
+    global tela
+    if evento is not None:
+        if modo_tela is None:
+            raise RuntimeError("Chame inicializar_app() antes de processar eventos da tela.")
+        tela = modo_tela.handle_event(evento)
+        LARGURA, ALTURA = tela.get_size()
+        config.LARGURA, config.ALTURA = LARGURA, ALTURA
     return LARGURA, ALTURA
 
-def texto_com_borda(fonte, texto, cor, borda_cor=PRETO, tamanho_borda=1, fundo=None):
-    superficie = fonte.render(texto, True, cor, fundo)
-    if tamanho_borda <= 0 or texto is None or texto == "":
-        return superficie
-
-    contorno = pygame.Surface(
-        (superficie.get_width() + tamanho_borda * 2, superficie.get_height() + tamanho_borda * 2),
-        pygame.SRCALPHA,
-    )
-
-    for dx in range(-tamanho_borda, tamanho_borda + 1):
-        for dy in range(-tamanho_borda, tamanho_borda + 1):
-            if dx == 0 and dy == 0:
-                continue
-            texto_borda = fonte.render(texto, True, borda_cor, fundo)
-            contorno.blit(texto_borda, (dx + tamanho_borda, dy + tamanho_borda))
-
-    contorno.blit(superficie, (tamanho_borda, tamanho_borda))
-    return contorno
-
-
 def desenhar_botao_pausa(tela_surface, rect, texto, ativo=False):
-    cor_fundo = (30, 30, 40) if not ativo else (70, 110, 170)
-    cor_borda = AZUL_NEON if not ativo else AMARELO
-    pygame.draw.rect(tela_surface, cor_fundo, rect, border_radius=8)
-    pygame.draw.rect(tela_surface, cor_borda, rect, 2, border_radius=8)
-    txt = texto_com_borda(fonte_hud, texto, BRANCO if not ativo else AMARELO)
-    tela_surface.blit(txt, (rect.centerx - txt.get_width() // 2, rect.centery - txt.get_height() // 2))
+    _desenhar_botao_pausa(tela_surface, rect, texto, fonte_hud, ativo)
 
 
 def gerar_som_inicio_fase(fase_atual):
@@ -118,946 +153,118 @@ def calcular_duracao_especial_titan(nivel=1):
     frames = 36 + max(0, nivel - 1) * 12
     return frames / FPS
 
-
-fonte_titulo = pygame.font.SysFont("Noto Sans", 32, bold=True)
-fonte_texto = pygame.font.SysFont("Noto Sans", 16)
-fonte_hud = pygame.font.SysFont("Noto Sans", 16, bold=True)
-
-# Carrega a imagem de fundo da tela de boas-vindas
-try:
-    fundo_img = pygame.image.load(resolver_caminho_arquivo("chagada.jpg")).convert()
-    fundo_img = pygame.transform.scale(fundo_img, (LARGURA, ALTURA))
-except Exception as e:
-    print(f"Erro ao carregar chagada.jpg: {e}. Usando fundo preto.")
-    fundo_img = None
-
-# Fundos das fases do jogo
-fundo_fase_1 = None
-try:
-    fundo_fase_1 = pygame.image.load(resolver_caminho_arquivo("fase1.jpg")).convert()
-    fundo_fase_1 = pygame.transform.scale(fundo_fase_1, (LARGURA, ALTURA))
-except Exception as e:
-    print(f"Erro ao carregar fase1.jpg: {e}. Usando fundo preto.")
-
-fundo_fase_2 = None
-try:
-    fundo_fase_2 = pygame.image.load(resolver_caminho_arquivo("fase2.jpg")).convert()
-    fundo_fase_2 = pygame.transform.scale(fundo_fase_2, (LARGURA, ALTURA))
-except Exception as e:
-    print(f"Erro ao carregar fase2.jpg: {e}. Usando fundo preto.")
-
-fundo_fase_3 = None
-try:
-    fundo_fase_3 = pygame.image.load(resolver_caminho_arquivo("fase3.jpg")).convert()
-    fundo_fase_3 = pygame.transform.scale(fundo_fase_3, (LARGURA, ALTURA))
-except Exception as e:
-    print(f"Erro ao carregar fase3.jpg: {e}. Usando fundo preto.")
-
-fundo_fase_4 = None
-try:
-    fundo_fase_4 = pygame.image.load(resolver_caminho_arquivo("fase4.jpg")).convert()
-    fundo_fase_4 = pygame.transform.scale(fundo_fase_4, (LARGURA, ALTURA))
-except Exception as e:
-    print(f"Erro ao carregar fase4.jpg: {e}. Usando fundo preto.")
-
-# Fundo usado na tela de seleção de nave
-try:
-    fundo_selecao = pygame.image.load(resolver_caminho_arquivo("tela preta.jpg")).convert()
-    fundo_selecao = pygame.transform.scale(fundo_selecao, (LARGURA, ALTURA))
-except Exception as e:
-    print(f"Erro ao carregar tela preta.jpg: {e}. Usando fundo preto.")
-    fundo_selecao = None
-
-# Fundo específico da tela de fim de jogo
-fundo_fim = None
-try:
-    fundo_fim = pygame.image.load(resolver_caminho_arquivo("fim.jpg")).convert()
-    fundo_fim = pygame.transform.scale(fundo_fim, (LARGURA, ALTURA))
-except Exception as e:
-    print(f"Erro ao carregar fim.jpg: {e}. Usando fundo preto.")
-    fundo_fim = None
-
 def tela_boas_vindas():
-    rodando = True
-    while rodando:
-        relogio.tick(60)
-        if fundo_img:
-            tela.blit(fundo_img, (0, 0))
-        else:
-            tela.fill(PRETO)
-        
-        msg1 = texto_com_borda(fonte_titulo, "SOLDADO CÓSMICO", AZUL_NEON)
-        msg2 = texto_com_borda(fonte_texto, "Olá, soldado cósmico. A Terra está sendo ameaçada", BRANCO)
-        msg3 = texto_com_borda(fonte_texto, "por asteroides, precisamos impedir que isso aconteça!", BRANCO)
-        
-        msg_op1 = texto_com_borda(fonte_hud, "[ENTER] - Iniciar Missão", AMARELO)
-        msg_op2 = texto_com_borda(fonte_hud, "[C] - Ver Comandos / Teclas", BRANCO)
-        msg_op3 = texto_com_borda(fonte_hud, "[R] - Ver Ranking", AZUL_NEON)
-        
-        tela.blit(msg1, (LARGURA//2 - msg1.get_width()//2, 160))
-        tela.blit(msg2, (LARGURA//2 - msg2.get_width()//2, 230))
-        tela.blit(msg3, (LARGURA//2 - msg3.get_width()//2, 260))
-        
-        tela.blit(msg_op1, (LARGURA//2 - msg_op1.get_width()//2, 350))
-        tela.blit(msg_op2, (LARGURA//2 - msg_op2.get_width()//2, 390))
-        tela.blit(msg_op3, (LARGURA//2 - msg_op3.get_width()//2, 430))
-        
-        pygame.display.flip()
-        
-        for evento in pygame.event.get():
-            if evento.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
-            if evento.type == pygame.VIDEORESIZE:
-                atualizar_tamanho_tela(evento)
-            if evento.type == pygame.KEYDOWN:
-                if evento.key == pygame.K_RETURN or evento.key == pygame.K_KP_ENTER:
-                    rodando = False
-                elif evento.key == pygame.K_c:
-                    tela_comandos()
-                elif evento.key == pygame.K_r:
-                    tela_ranking()
+    _tela_boas_vindas(
+        tela, relogio, (fonte_titulo, fonte_texto, fonte_hud), fundo_img,
+        atualizar_tamanho_tela, tela_comandos, tela_ranking,
+        lambda: tela_conquistas(dados_jogador),
+    )
 
 
 def tela_ranking():
-    rodando = True
-    while rodando:
-        relogio.tick(60)
-        if fundo_img:
-            tela.blit(fundo_img, (0, 0))
-        else:
-            tela.fill(PRETO)
+    _tela_ranking(
+        tela, relogio, (fonte_titulo, fonte_texto, fonte_hud), fundo_img,
+        atualizar_tamanho_tela, listar_ranking,
+    )
 
-        titulo = texto_com_borda(fonte_titulo, "RANKING FINAL", AMARELO)
-        tela.blit(titulo, (LARGURA // 2 - titulo.get_width() // 2, 60))
 
-        ranking = listar_ranking(10)
-        painel = pygame.Surface((700, 420), pygame.SRCALPHA)
-        painel.fill((15, 18, 28, 180))
-        tela.blit(painel, (LARGURA // 2 - 350, 110))
-
-        if not ranking:
-            vazio = texto_com_borda(fonte_hud, "Nenhuma pontuação registrada ainda.", BRANCO)
-            tela.blit(vazio, (LARGURA // 2 - vazio.get_width() // 2, 260))
-        else:
-            for idx, item in enumerate(ranking, start=1):
-                texto_linha = texto_com_borda(
-                    fonte_hud,
-                    f"{idx}. {item['pontuacao']} pts  |  {item['modo']}  |  {item['nave']}  |  {item['data']}",
-                    BRANCO if idx % 2 == 1 else AMARELO,
-                )
-                tela.blit(texto_linha, (LARGURA // 2 - texto_linha.get_width() // 2, 150 + (idx - 1) * 32))
-
-        voltar = texto_com_borda(fonte_hud, "Pressione [ESC] ou [ENTER] para voltar", AZUL_NEON)
-        tela.blit(voltar, (LARGURA // 2 - voltar.get_width() // 2, 520))
-        pygame.display.flip()
-
-        for evento in pygame.event.get():
-            if evento.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
-            if evento.type == pygame.VIDEORESIZE:
-                atualizar_tamanho_tela(evento)
-            if evento.type == pygame.KEYDOWN:
-                if evento.key in (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_ESCAPE):
-                    rodando = False
+def tela_conquistas(dados_jogador):
+    _tela_conquistas(
+        dados_jogador, tela, relogio, (fonte_titulo, fonte_texto, fonte_hud),
+        fundo_img, atualizar_tamanho_tela, listar_conquistas,
+    )
 
 
 def tela_comandos():
-    rodando = True
-    while rodando:
-        relogio.tick(60)
-        if fundo_img:
-            tela.blit(fundo_img, (0, 0))
-        else:
-            tela.fill(PRETO)
-        
-        titulo = texto_com_borda(fonte_titulo, "PAINEL DE COMANDOS", AZUL_NEON)
-        
-        c1 = texto_com_borda(fonte_texto, "• [Q / E] : Gira a nave para a esquerda e para a direita", BRANCO)
-        c2 = texto_com_borda(fonte_texto, "• [CIMA] ou [W] : Acelera a nave para frente", BRANCO)
-        c3 = texto_com_borda(fonte_texto, "• [J] (Segurar) : Dispara tiros normais contínuos", AMARELO)
-        c4 = texto_com_borda(fonte_texto, "• [K] : Dispara o Tiro Especial (quando a barra encher)", AZUL_NEON)
-        c5 = texto_com_borda(fonte_texto, "• [R] : Abre o ranking final", AMARELO)
-        c6 = texto_com_borda(fonte_texto, "• [ESC] / Fechar : Sai do jogo", VERMELHO)
-        
-        voltar = texto_com_borda(fonte_hud, "Pressione [ESC] ou [ENTER] para voltar", AMARELO)
-        
-        tela.blit(titulo, (LARGURA//2 - titulo.get_width()//2, 70))
-        
-        tela.blit(c1, (40, 160))
-        tela.blit(c2, (40, 210))
-        tela.blit(c3, (40, 260))
-        tela.blit(c4, (40, 310))
-        tela.blit(c5, (40, 360))
-        tela.blit(c6, (40, 410))
-        
-        tela.blit(voltar, (LARGURA//2 - voltar.get_width()//2, 500))
-        
-        pygame.display.flip()
-        
-        for evento in pygame.event.get():
-            if evento.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
-            if evento.type == pygame.VIDEORESIZE:
-                atualizar_tamanho_tela(evento)
-            if evento.type == pygame.KEYDOWN:
-                if evento.key == pygame.K_RETURN or evento.key == pygame.K_KP_ENTER or evento.key == pygame.K_ESCAPE:
-                    rodando = False
+    _tela_comandos(
+        tela, relogio, (fonte_titulo, fonte_texto, fonte_hud), fundo_img,
+        atualizar_tamanho_tela,
+    )
 
 def tela_selecao_modo():
-    opcoes = [
-        {"nome": "ASTEROIDES", "valor": "asteroides", "descricao": "Missão clássica contra meteoros e obstáculos."},
-        {"nome": "FROTA INIMIGA", "valor": "frota_inimiga", "descricao": "Modo de combate direto contra naves inimigas."},
-        {"nome": "INFINITO", "valor": "infinito", "descricao": "Sobreviva o máximo de tempo e marque a maior pontuação possível."},
-    ]
-    indice = 0
-    rodando = True
-
-    while rodando:
-        relogio.tick(60)
-        if fundo_selecao:
-            tela.blit(fundo_selecao, (0, 0))
-        else:
-            tela.fill(PRETO)
-
-        titulo = texto_com_borda(fonte_titulo, "SELEÇÃO DE MODO", AZUL_NEON)
-        tela.blit(titulo, (LARGURA // 2 - titulo.get_width() // 2, 50))
-
-        for idx, opcao in enumerate(opcoes):
-            offset = idx - (len(opcoes) - 1) / 2
-            x = LARGURA // 2 + offset * 240
-            y = 240
-            largura = 200
-            altura = 180
-            selecionado = idx == indice
-            cor = AMARELO if selecionado else AZUL_NEON
-            rect = pygame.Rect(x - largura // 2, y, largura, altura)
-            pygame.draw.rect(tela, (18, 22, 30), rect, border_radius=18)
-            pygame.draw.rect(tela, cor, rect, 3 if selecionado else 1, border_radius=18)
-
-            txt_nome = texto_com_borda(fonte_hud, opcao["nome"], AMARELO if selecionado else BRANCO)
-            tela.blit(txt_nome, (x - txt_nome.get_width() // 2, y + 40))
-
-            txt_desc = texto_com_borda(fonte_texto, opcao["descricao"], BRANCO)
-            tela.blit(txt_desc, (x - txt_desc.get_width() // 2, y + 90))
-
-        txt_instrucao = texto_com_borda(fonte_hud, "Use [← / →] ou [A / D] para escolher | [ENTER] para confirmar", BRANCO)
-        tela.blit(txt_instrucao, (LARGURA // 2 - txt_instrucao.get_width() // 2, 500))
-        pygame.display.flip()
-
-        for evento in pygame.event.get():
-            if evento.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
-            if evento.type == pygame.VIDEORESIZE:
-                atualizar_tamanho_tela(evento)
-            if evento.type == pygame.KEYDOWN:
-                if evento.key in (pygame.K_LEFT, pygame.K_a):
-                    indice = (indice - 1) % len(opcoes)
-                elif evento.key in (pygame.K_RIGHT, pygame.K_d):
-                    indice = (indice + 1) % len(opcoes)
-                elif evento.key == pygame.K_RETURN or evento.key == pygame.K_KP_ENTER:
-                    rodando = False
-                    return opcoes[indice]["valor"]
+    return _tela_selecao_modo(
+        tela, relogio, (fonte_titulo, fonte_texto, fonte_hud), fundo_selecao,
+        atualizar_tamanho_tela,
+    )
 
 
 def tela_selecao_nave(dados_jogador):
-    naves_disponiveis = [
-        {"nome": "Vanguard", "arquivo": "Vanguard.png", "preco": 0, "descricao": "Padrão de patrulha (Gratuita)"},
-        {"nome": "Scout", "arquivo": "Scout.png", "preco": 50, "descricao": "Alta velocidade de locomoção."},
-        {"nome": "Titan", "arquivo": "Titan.png", "preco": 100, "descricao": "Blindagem pesada e dano alto."},
-        {"nome": "Phantom", "arquivo": "Phantom.png", "preco": 150, "descricao": "Disparadores de plasma velozes."},
-        {"nome": "Aegis", "arquivo": "Aegis.png", "preco": 250, "descricao": "Escudo supremo e laser total."}
-    ]
-
-    imagens_naves = {}
-    for nave in naves_disponiveis:
-        try:
-            imagem = pygame.image.load(resolver_caminho_arquivo(nave["arquivo"])).convert_alpha()
-        except Exception:
-            imagem = pygame.Surface((200, 200), pygame.SRCALPHA)
-            pygame.draw.rect(imagem, AZUL_NEON, (0, 0, 200, 200), border_radius=20)
-        imagens_naves[nave["arquivo"]] = imagem
-
-    indice_selecionado = 0
-    rodando = True
-
-    while rodando:
-        relogio.tick(60)
-        if fundo_selecao:
-            tela.blit(fundo_selecao, (0, 0))
-        else:
-            tela.fill(PRETO)
-
-        titulo = texto_com_borda(fonte_titulo, "HANGAR - SELEÇÃO DE NAVES", AZUL_NEON)
-        tela.blit(titulo, (LARGURA//2 - titulo.get_width()//2, 30))
-
-        txt_moedas = texto_com_borda(fonte_hud, f"Suas Moedas: {dados_jogador['moedas']} 🪙", AMARELO)
-        tela.blit(txt_moedas, (LARGURA//2 - txt_moedas.get_width()//2, 80))
-
-        centro_x = LARGURA // 2
-        base_y = 210
-        mapa_offsets = [-2, -1, 0, 1, 2]
-
-        for offset in mapa_offsets:
-            indice = (indice_selecionado + offset) % len(naves_disponiveis)
-            nave = naves_disponiveis[indice]
-            if offset == 0:
-                tamanho = (190, 190)
-                alpha = 255
-                cor_borda = AMARELO
-                y = base_y
-                texto_cor = AMARELO
-            elif abs(offset) == 1:
-                tamanho = (110, 110)
-                alpha = 210
-                cor_borda = AZUL_NEON
-                y = base_y + 30
-                texto_cor = BRANCO
-            else:
-                tamanho = (78, 78)
-                alpha = 150
-                cor_borda = CINZA
-                y = base_y + 55
-                texto_cor = CINZA
-
-            x = centro_x + offset * 150
-            imagem = pygame.transform.smoothscale(imagens_naves[nave["arquivo"]], tamanho)
-            imagem.set_alpha(alpha)
-
-            rect_imagem = pygame.Rect(x - tamanho[0] // 2, y, *tamanho)
-            pygame.draw.rect(tela, cor_borda, rect_imagem, 3 if offset == 0 else 1, border_radius=18)
-            tela.blit(imagem, rect_imagem.topleft)
-
-            nome_txt = texto_com_borda(fonte_texto, nave["nome"], texto_cor)
-            tela.blit(nome_txt, (x - nome_txt.get_width() // 2, rect_imagem.bottom + 10))
-
-            if offset == 0:
-                desbloqueada = nave["arquivo"] in dados_jogador["naves_desbloqueadas"] or nave["preco"] == 0
-                status = "LIBERADA" if desbloqueada else f"PREÇO: {nave['preco']} 🪙"
-                descricao = texto_com_borda(fonte_texto, nave["descricao"], BRANCO)
-                status_txt = texto_com_borda(fonte_hud, f"Status: {status}", AMARELO if desbloqueada else VERMELHO)
-                tela.blit(descricao, (LARGURA // 2 - descricao.get_width() // 2, rect_imagem.bottom + 40))
-                tela.blit(status_txt, (LARGURA // 2 - status_txt.get_width() // 2, rect_imagem.bottom + 70))
-
-        txt_instrucao = texto_com_borda(fonte_hud, "Use [← / →] ou [SETAS] para navegar | [ENTER] para Selecionar/Comprar", BRANCO)
-        tela.blit(txt_instrucao, (LARGURA//2 - txt_instrucao.get_width()//2, 500))
-
-        pygame.display.flip()
-
-        for evento in pygame.event.get():
-            if evento.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
-            if evento.type == pygame.VIDEORESIZE:
-                atualizar_tamanho_tela(evento)
-            if evento.type == pygame.KEYDOWN:
-                if evento.key in (pygame.K_LEFT, pygame.K_a, pygame.K_UP):
-                    indice_selecionado = (indice_selecionado - 1) % len(naves_disponiveis)
-                elif evento.key in (pygame.K_RIGHT, pygame.K_d, pygame.K_DOWN):
-                    indice_selecionado = (indice_selecionado + 1) % len(naves_disponiveis)
-                elif evento.key == pygame.K_RETURN or evento.key == pygame.K_KP_ENTER:
-                    nave_atual = naves_disponiveis[indice_selecionado]
-                    ja_tem = nave_atual["arquivo"] in dados_jogador["naves_desbloqueadas"] or nave_atual["preco"] == 0
-
-                    if ja_tem:
-                        return nave_atual["arquivo"]
-                    elif dados_jogador["moedas"] >= nave_atual["preco"]:
-                        dados_jogador["moedas"] -= nave_atual["preco"]
-                        dados_jogador["naves_desbloqueadas"].append(nave_atual["arquivo"])
-                        salvar_dados(dados_jogador)
-                        return nave_atual["arquivo"]
+    return _tela_selecao_nave(
+        dados_jogador, tela, relogio, (fonte_titulo, fonte_texto, fonte_hud),
+        fundo_selecao, atualizar_tamanho_tela, resolver_caminho_arquivo,
+        validar_dados_jogador, salvar_dados,
+    )
 
 def tela_melhorias(dados_jogador):
-    opcoes = ["velocidade", "cadencia", "especial"]
-    indice_selecionado = 0
-    rodando = True
+    _tela_melhorias(
+        dados_jogador, tela, relogio, (fonte_titulo, fonte_texto, fonte_hud),
+        fundo_selecao, atualizar_tamanho_tela, validar_dados_jogador,
+        salvar_dados, calcular_duracao_especial_titan,
+    )
 
-    custos = {
-        "velocidade": 30,
-        "cadencia": 40,
-        "especial": 35
-    }
+def jogo_principal(
+    arquivo_nave,
+    niveis_melhorias,
+    fase_atual=1,
+    modo_jogo="asteroides",
+    dados_jogador=None,
+):
+    services = SessionServices(
+        get_screen=pygame.display.get_surface,
+        clock=relogio,
+        fonts=(fonte_titulo, fonte_texto, fonte_hud),
+        backgrounds=(fundo_fase_1, fundo_fase_2, fundo_fase_3, fundo_fase_4),
+        resize_display=atualizar_tamanho_tela,
+        create_initial_asteroids=criar_asteroides_iniciais,
+        create_infinite_asteroids=criar_asteroides_infinito,
+        asteroid_damage=calcular_dano_asteroide,
+        save_player=salvar_dados,
+        play_sound=tocar_som,
+    )
+    return run_game_session(
+        arquivo_nave,
+        niveis_melhorias,
+        fase_atual,
+        modo_jogo,
+        dados_jogador,
+        services=services,
+    )
 
-    nomes = {
-        "velocidade": "Velocidade",
-        "cadencia": "Cadência",
-        "especial": "Especial"
-    }
-
-    while rodando:
-        relogio.tick(60)
-        if fundo_selecao:
-            tela.blit(fundo_selecao, (0, 0))
-        else:
-            tela.fill(PRETO)
-
-        titulo = texto_com_borda(fonte_titulo, "LABORATÓRIO DE MELHORIAS", AZUL_NEON)
-        tela.blit(titulo, (LARGURA//2 - titulo.get_width()//2, 30))
-
-        txt_moedas = texto_com_borda(fonte_hud, f"Suas Moedas: {dados_jogador['moedas']} 🪙", AMARELO)
-        tela.blit(txt_moedas, (LARGURA//2 - txt_moedas.get_width()//2, 80))
-
-        centro_x = LARGURA // 2
-        base_y = 190
-        pad = 170
-
-        for offset in (-1, 0, 1):
-            indice = (indice_selecionado + offset) % len(opcoes)
-            chave = opcoes[indice]
-            nivel_atual = dados_jogador["niveis_melhorias"][chave]
-            custo_atual = custos[chave] * nivel_atual
-
-            if offset == 0:
-                largura = 220
-                altura = 140
-                alpha = 255
-                borda = AMARELO
-                texto_cor = BRANCO
-                y = base_y
-            elif abs(offset) == 1:
-                largura = 130
-                altura = 90
-                alpha = 180
-                borda = AZUL_NEON
-                texto_cor = BRANCO
-                y = base_y + 20
-
-            x = centro_x + offset * pad
-            card = pygame.Surface((largura, altura), pygame.SRCALPHA)
-            pygame.draw.rect(card, (20, 24, 35, 180), card.get_rect(), border_radius=16)
-            pygame.draw.rect(card, borda, card.get_rect(), 2, border_radius=16)
-            card.set_alpha(alpha)
-            tela.blit(card, (x - largura // 2, y))
-
-            nome = texto_com_borda(fonte_hud, nomes[chave], texto_cor)
-            nivel = texto_com_borda(fonte_texto, f"Nível: {nivel_atual}", BRANCO)
-            valor = texto_com_borda(fonte_texto, f"Custo: {custo_atual} 🪙", AMARELO)
-
-            tela.blit(nome, (x - nome.get_width() // 2, y + 18))
-            tela.blit(nivel, (x - nivel.get_width() // 2, y + 48))
-            tela.blit(valor, (x - valor.get_width() // 2, y + 72))
-
-            if chave == "especial":
-                duracao = calcular_duracao_especial_titan(nivel_atual)
-                txt_duracao = texto_com_borda(fonte_texto, f"Duração: {duracao:.1f}s", AZUL_NEON)
-                tela.blit(txt_duracao, (x - txt_duracao.get_width() // 2, y + 96))
-
-        txt_instrucao = texto_com_borda(fonte_hud, "[SETAS] Mudar | [ENTER] Comprar | [ESPAÇO] Ir para Missão", BRANCO)
-        tela.blit(txt_instrucao, (LARGURA//2 - txt_instrucao.get_width()//2, 500))
-
-        pygame.display.flip()
-
-        for evento in pygame.event.get():
-            if evento.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
-            if evento.type == pygame.VIDEORESIZE:
-                atualizar_tamanho_tela(evento)
-            if evento.type == pygame.KEYDOWN:
-                if evento.key == pygame.K_LEFT or evento.key == pygame.K_UP:
-                    indice_selecionado = (indice_selecionado - 1) % len(opcoes)
-                elif evento.key == pygame.K_RIGHT or evento.key == pygame.K_DOWN:
-                    indice_selecionado = (indice_selecionado + 1) % len(opcoes)
-                elif evento.key == pygame.K_RETURN or evento.key == pygame.K_KP_ENTER:
-                    chave_escolhida = opcoes[indice_selecionado]
-                    nivel_atual = dados_jogador["niveis_melhorias"][chave_escolhida]
-                    custo_necessario = custos[chave_escolhida] * nivel_atual
-
-                    if dados_jogador["moedas"] >= custo_necessario:
-                        dados_jogador["moedas"] -= custo_necessario
-                        dados_jogador["niveis_melhorias"][chave_escolhida] += 1
-                        salvar_dados(dados_jogador)
-                elif evento.key == pygame.K_SPACE:
-                    rodando = False
-
-def jogo_principal(arquivo_nave, niveis_melhorias, fase_atual=1, modo_jogo="asteroides"):
-    todos_sprites = pygame.sprite.Group()
-    tiros = pygame.sprite.Group()
-    asteroides = pygame.sprite.Group()
-    inimigos_frota = pygame.sprite.Group()
-    tiros_inimigos = pygame.sprite.Group()
-    especiais = pygame.sprite.Group()
-    explosoes = pygame.sprite.Group()
-    modo_frota = modo_jogo == "frota_inimiga"
-    modo_infinito = modo_jogo == "infinito"
-
-    if fase_atual == 1:
-        fundo_fase = fundo_fase_1
-    elif fase_atual == 2:
-        fundo_fase = fundo_fase_2
-    elif fase_atual == 3:
-        fundo_fase = fundo_fase_3
-    else:
-        fundo_fase = fundo_fase_4
-
-    jogador = Nave(LARGURA // 2, ALTURA - 80, arquivo_nave, niveis_melhorias)
-    todos_sprites.add(jogador)
-
-    if modo_infinito:
-        asteroides = criar_asteroides_infinito(pontos=0, fase_atual=fase_atual, quantidade_minima=10)
-    else:
-        asteroides = criar_asteroides_iniciais(fase_atual, modo_frota)
-    for ast in asteroides:
-        todos_sprites.add(ast)
-
-    frota_inicial = []
-    if modo_frota:
-        frota_inicial = gerar_frota_inimiga(fase_atual)
-        for nave_inimiga in frota_inicial:
-            todos_sprites.add(nave_inimiga)
-            inimigos_frota.add(nave_inimiga)
-
-    moedas = 0
-    pontos = 0
-    meta_pontos = 0 if modo_infinito else (calcular_meta_frota(fase_atual, frota_inicial) if modo_frota else 240 + fase_atual * 120)
-
-    rodando = True
-    pausado = False
-    cooldown_tiro = 0
-    cadencia_base = max(4, 12 - (niveis_melhorias["cadencia"] - 1) * 2)
-    venceu = False
-    botao_pausa = pygame.Rect(LARGURA - 120, 20, 100, 35)
-    tempo_inicio_infinito = pygame.time.get_ticks() if modo_infinito else 0
-    
-    while rodando:
-        relogio.tick(FPS)
-        
-        for evento in pygame.event.get():
-            if evento.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
-            if evento.type == pygame.VIDEORESIZE:
-                atualizar_tamanho_tela(evento)
-                botao_pausa = pygame.Rect(LARGURA - 120, 20, 100, 35)
-
-            if evento.type == pygame.MOUSEBUTTONDOWN and evento.button == 1:
-                if botao_pausa.collidepoint(evento.pos):
-                    pausado = not pausado
-
-            if evento.type == pygame.KEYDOWN:
-                if evento.key == pygame.K_p:
-                    pausado = not pausado
-                elif evento.key == pygame.K_k:
-                    if jogador.disparar_especial():
-                        tocar_som([620, 820], duracao=0.18, volume=0.3)
-                        if jogador.modelo != "aegis":
-                            for especial in jogador.criar_tiro_especial():
-                                todos_sprites.add(especial)
-                                especiais.add(especial)
-                        else:
-                            especial = TiroEspecialAegis(jogador.rect.centerx, jogador.rect.centery, jogador.angulo, nave=jogador)
-                            todos_sprites.add(especial)
-                            especiais.add(especial)
-            elif evento.type == pygame.KEYUP and evento.key == pygame.K_k and jogador.modelo == "aegis":
-                jogador.aegis_ativo = False
-
-        if pausado:
-            if fundo_fase:
-                tela.blit(fundo_fase, (0, 0))
-            else:
-                tela.fill(PRETO)
-
-            todos_sprites.draw(tela)
-
-            texto_pontos = f"Pontos: {pontos}" if modo_infinito else f"Pontos: {pontos} / {meta_pontos}"
-            txt_pontos = texto_com_borda(fonte_hud, texto_pontos, BRANCO)
-            txt_fase = texto_com_borda(fonte_hud, "INFINITO" if modo_infinito else f"Fase: {fase_atual}", AZUL_NEON)
-            txt_moedas = texto_com_borda(fonte_hud, f"Moedas: {moedas} 🪙", AMARELO)
-            txt_vida = texto_com_borda(fonte_hud, "Vida", BRANCO)
-
-            tela.blit(txt_pontos, (20, 20))
-            tela.blit(txt_fase, (20, 45))
-            tela.blit(txt_moedas, (20, 70))
-            tela.blit(txt_vida, (20, 95))
-
-            largura_vida = int(180 * (jogador.vida / jogador.vida_maxima))
-            pygame.draw.rect(tela, (50, 50, 50), (20, 118, 180, 14))
-            pygame.draw.rect(tela, (60, 220, 120), (20, 118, largura_vida, 14))
-            pygame.draw.rect(tela, BRANCO, (20, 118, 180, 14), 1)
-
-            desenhar_botao_pausa(tela, botao_pausa, "Continuar", ativo=True)
-
-            overlay = pygame.Surface((LARGURA, ALTURA), pygame.SRCALPHA)
-            overlay.fill((10, 12, 20, 170))
-            tela.blit(overlay, (0, 0))
-
-            txt_pausa = texto_com_borda(fonte_titulo, "PAUSADO", AMARELO)
-            txt_instrucao = texto_com_borda(fonte_hud, "Pressione [P] ou clique no botão para continuar", BRANCO)
-            tela.blit(txt_pausa, (LARGURA // 2 - txt_pausa.get_width() // 2, ALTURA // 2 - 40))
-            tela.blit(txt_instrucao, (LARGURA // 2 - txt_instrucao.get_width() // 2, ALTURA // 2 + 30))
-            pygame.display.flip()
-            continue
-
-        teclas = pygame.key.get_pressed()
-        
-        if teclas[pygame.K_j]:
-            if cooldown_tiro <= 0:
-                tiro = Tiro(jogador.rect.centerx, jogador.rect.centery, jogador.angulo)
-                todos_sprites.add(tiro)
-                tiros.add(tiro)
-                tocar_som([420], duracao=0.08, volume=0.18)
-                cooldown_tiro = cadencia_base
-                
-        if cooldown_tiro > 0:
-            cooldown_tiro -= 1
-
-        jogador.update(teclas)
-
-        if modo_infinito:
-            tempo_jogo_ms = pygame.time.get_ticks() - tempo_inicio_infinito
-            dificuldade_infinita = 1 + tempo_jogo_ms // 10000
-            limite_asteroides = min(26, 10 + dificuldade_infinita + pontos // 250)
-
-            if len(asteroides) < limite_asteroides:
-                faltam = limite_asteroides - len(asteroides)
-                for _ in range(faltam):
-                    ast = Asteroide(fase_atual)
-                    ast.velocidadey = max(2, 2 + dificuldade_infinita * 0.5 + min(4, pontos / 500))
-                    ast.velocidadex = random.randint(-2, 2)
-                    ast.rect.x = random.randint(0, config.LARGURA - ast.tamanho)
-                    ast.rect.y = random.randint(-120, -30)
-                    todos_sprites.add(ast)
-                    asteroides.add(ast)
-
-        todos_sprites.update()
-
-        colisoes_tiro = pygame.sprite.groupcollide(asteroides, tiros, True, True)
-        for ast in colisoes_tiro:
-            cor_explosao = (255, 190, 80)
-            if jogador.modelo == "titan":
-                cor_explosao = (255, 150, 60)
-            explosao = Explosao(ast.rect.centerx, ast.rect.centery, cor=cor_explosao, raio_inicial=16)
-            todos_sprites.add(explosao)
-            explosoes.add(explosao)
-            pontos += 10
-            jogador.aplicar_pontos_para_cura(10)
-            moedas += 1
-            jogador.adicionar_energia(20)
-            tocar_som([180, 120], duracao=0.15, volume=0.25)
-            
-            if pontos < meta_pontos:
-                novo_ast = Asteroide(fase_atual)
-                novo_ast.velocidadey = max(1, novo_ast.velocidadey - 2)
-                todos_sprites.add(novo_ast)
-                asteroides.add(novo_ast)
-
-        for especial in list(especiais):
-            if getattr(especial, "tipo", None) == "titan":
-                for ast in list(asteroides):
-                    distancia = math.hypot(ast.rect.centerx - especial.rect.centerx, ast.rect.centery - especial.rect.centery)
-                    if distancia <= especial.raio:
-                        dano_ast = especial.dano_central if distancia <= especial.raio * 0.5 else especial.dano
-                        cor_explosao = (255, 180, 90)
-                        explosao = Explosao(ast.rect.centerx, ast.rect.centery, cor=cor_explosao, raio_inicial=16)
-                        todos_sprites.add(explosao)
-                        explosoes.add(explosao)
-                        ast.kill()
-                        pontos += 8 + int(dano_ast)
-                        jogador.aplicar_pontos_para_cura(8 + int(dano_ast))
-                        moedas += 1
-                        tocar_som([520, 700, 820], duracao=0.2, volume=0.3)
-                        if pontos < meta_pontos:
-                            novo_ast = Asteroide(fase_atual)
-                            novo_ast.velocidadey = max(1, novo_ast.velocidadey - 2)
-                            todos_sprites.add(novo_ast)
-                            asteroides.add(novo_ast)
-
-                for nave_inimiga in list(inimigos_frota):
-                    distancia = math.hypot(nave_inimiga.rect.centerx - especial.rect.centerx, nave_inimiga.rect.centery - especial.rect.centery)
-                    if distancia <= especial.raio:
-                        dano_nave = especial.dano_central if distancia <= especial.raio * 0.5 else especial.dano
-                        nave_inimiga.vida -= dano_nave
-                        explosao = Explosao(nave_inimiga.rect.centerx, nave_inimiga.rect.centery, cor=(255, 130, 90), raio_inicial=12)
-                        todos_sprites.add(explosao)
-                        explosoes.add(explosao)
-                        if nave_inimiga.vida <= 0:
-                            nave_inimiga.kill()
-                            pontos += 18 + fase_atual * 4 + dano_nave
-                            jogador.aplicar_pontos_para_cura(18 + fase_atual * 4 + dano_nave)
-                            moedas += 2
-                            jogador.adicionar_energia(12)
-                            tocar_som([260, 200], duracao=0.12, volume=0.25)
-
-        colisoes_especial = pygame.sprite.groupcollide(asteroides, especiais, True, False)
-        for ast in colisoes_especial:
-            cor_explosao = (255, 110, 255)
-            if jogador.modelo == "titan":
-                cor_explosao = (255, 180, 90)
-            explosao = Explosao(ast.rect.centerx, ast.rect.centery, cor=cor_explosao, raio_inicial=18)
-            todos_sprites.add(explosao)
-            explosoes.add(explosao)
-            pontos += 15
-            jogador.aplicar_pontos_para_cura(15)
-            moedas += 2
-            tocar_som([520, 700, 820], duracao=0.2, volume=0.3)
-            if pontos < meta_pontos:
-                novo_ast = Asteroide(fase_atual)
-                novo_ast.velocidadey = max(1, novo_ast.velocidadey - 2)
-                todos_sprites.add(novo_ast)
-                asteroides.add(novo_ast)
-
-        if modo_frota:
-            for nave_inimiga in list(inimigos_frota):
-                if nave_inimiga.cooldown_tiro <= 0:
-                    tiro_inimigo = nave_inimiga.criar_tiro(jogador)
-                    if tiro_inimigo is not None:
-                        todos_sprites.add(tiro_inimigo)
-                        tiros_inimigos.add(tiro_inimigo)
-
-            colisoes_frota = pygame.sprite.groupcollide(inimigos_frota, tiros, False, True)
-            for nave_inimiga in colisoes_frota:
-                nave_inimiga.vida -= 1
-                explosao = Explosao(nave_inimiga.rect.centerx, nave_inimiga.rect.centery, cor=(255, 90, 90), raio_inicial=12)
-                todos_sprites.add(explosao)
-                explosoes.add(explosao)
-                if nave_inimiga.vida <= 0:
-                    nave_inimiga.kill()
-                    pontos += 25 + fase_atual * 5
-                    jogador.aplicar_pontos_para_cura(25 + fase_atual * 5)
-                    moedas += 2
-                    jogador.recuperar_vida(35 + max(0, fase_atual - 1) * 6)
-                    jogador.adicionar_energia(12)
-                    tocar_som([260, 200], duracao=0.12, volume=0.25)
-
-            if len(inimigos_frota) == 0 and pontos < meta_pontos:
-                nova_frota = gerar_frota_inimiga(fase_atual)
-                for nave_inimiga in nova_frota:
-                    todos_sprites.add(nave_inimiga)
-                    inimigos_frota.add(nave_inimiga)
-
-        if jogador.modelo == "aegis" and not teclas[pygame.K_k] and jogador.aegis_ativo:
-            jogador.aegis_ativo = False
-
-        if not modo_infinito and pontos >= meta_pontos:
-            venceu = True
-            rodando = False
-
-        tiros_jogador_colidindo = pygame.sprite.spritecollide(jogador, tiros_inimigos, True)
-        colidiu_com_asteroide = pygame.sprite.spritecollideany(jogador, asteroides)
-        dano_asteroide = calcular_dano_asteroide(modo_jogo)
-
-        if colidiu_com_asteroide or (modo_frota and pygame.sprite.spritecollideany(jogador, inimigos_frota)) or tiros_jogador_colidindo:
-            tocar_som([100, 70], duracao=0.18, volume=0.28)
-            dano_aplicado = dano_asteroide if colidiu_com_asteroide else 20
-            if jogador.perder_vida(dano_aplicado):
-                pygame.time.delay(500)
-                rodando = False
-
-        if fundo_fase:
-            tela.blit(fundo_fase, (0, 0))
-        else:
-            tela.fill(PRETO)
-            
-        todos_sprites.draw(tela)
-
-        txt_pontos = texto_com_borda(fonte_hud, f"Pontos: {pontos}" if modo_infinito else f"Pontos: {pontos} / {meta_pontos}", BRANCO)
-        txt_fase = texto_com_borda(fonte_hud, "INFINITO" if modo_infinito else f"Fase: {fase_atual}", AZUL_NEON)
-        txt_moedas = texto_com_borda(fonte_hud, f"Moedas: {moedas} 🪙", AMARELO)
-        txt_vida = texto_com_borda(fonte_hud, "Vida", BRANCO)
-        txt_frota = texto_com_borda(fonte_hud, "Frota: 0" if modo_infinito else f"Frota: {len(inimigos_frota)}", VERMELHO)
-        txt_modo = texto_com_borda(fonte_hud, "MODO: INFINITO" if modo_infinito else ("MODO: FROTA INIMIGA" if modo_frota else "MODO: ASTEROIDES"), AMARELO if modo_infinito or modo_frota else AZUL_NEON)
-
-        tela.blit(txt_pontos, (20, 20))
-        tela.blit(txt_fase, (20, 45))
-        tela.blit(txt_moedas, (20, 70))
-        tela.blit(txt_vida, (20, 95))
-
-        largura_vida = int(180 * (jogador.vida / jogador.vida_maxima))
-        pygame.draw.rect(tela, (50, 50, 50), (20, 118, 180, 14))
-        pygame.draw.rect(tela, (60, 220, 120), (20, 118, largura_vida, 14))
-        pygame.draw.rect(tela, BRANCO, (20, 118, 180, 14), 1)
-
-        tela.blit(txt_frota, (20, 145))
-        tela.blit(txt_modo, (20, 170))
-
-        pygame.draw.rect(tela, (50, 50, 50), (20, 175, 150, 15))
-        largura_barra = int(1.5 * jogador.energia_especial)
-        cor_barra = AZUL_NEON if jogador.energia_especial >= 100 else (0, 150, 200)
-        pygame.draw.rect(tela, cor_barra, (20, 175, largura_barra, 15))
-        pygame.draw.rect(tela, BRANCO, (20, 175, 150, 15), 1)
-
-        txt_especial = texto_com_borda(fonte_hud, "ESPECIAL [K]", BRANCO if jogador.energia_especial >= 100 else CINZA)
-        tela.blit(txt_especial, (180, 173))
-
-        if jogador.modelo == "titan":
-            especial_ativa = next((especial for especial in especiais if getattr(especial, "tipo", None) == "titan"), None)
-            restante = max(0, especial_ativa.vida / FPS) if especial_ativa is not None else 0
-            texto_duracao = "Titan: pronto" if especial_ativa is None else f"Titan: {restante:.1f}s"
-            cor_duracao = AZUL_NEON if especial_ativa is None else AMARELO
-            txt_duracao = texto_com_borda(fonte_hud, texto_duracao, cor_duracao)
-            tela.blit(txt_duracao, (20, 205))
-
-        desenhar_botao_pausa(tela, botao_pausa, "Pausar", ativo=False)
-
-        pygame.display.flip()
-
-    return pontos, moedas, venceu
 
 def tela_intro_fase(fase_atual):
-    gerar_som_inicio_fase(fase_atual)
-    inicio = pygame.time.get_ticks()
-    duracao_intro = 5000
-    mensagens = {
-        1: "A borda do setor está infestada. Prepare-se para romper as linhas inimigas.",
-        2: "O campo foi reforçado. Asteroides maiores e mais agressivos surgem do vazio.",
-        3: "Último bastião da rota. A frota inimiga se concentra em um ataque final.",
-        4: "A névoa de fogo do setor final está ativa. O último empurrão será decisivo."
-    }
-    cores_fase = {
-        1: AZUL_NEON,
-        2: AMARELO,
-        3: VERMELHO,
-        4: (255, 120, 40),
-    }
-
-    while True:
-        tempo_decorrido = pygame.time.get_ticks() - inicio
-        if tempo_decorrido >= duracao_intro:
-            break
-
-        relogio.tick(60)
-
-        if fase_atual == 1:
-            fundo = fundo_fase_1
-        elif fase_atual == 2:
-            fundo = fundo_fase_2
-        elif fase_atual == 3:
-            fundo = fundo_fase_3
-        else:
-            fundo = fundo_fase_4
-        if fundo:
-            tela.blit(fundo, (0, 0))
-        else:
-            tela.fill(PRETO)
-
-        transicao = min(255, max(0, int((tempo_decorrido / 1200) * 255)))
-        fade_saida = min(255, max(0, int(((duracao_intro - tempo_decorrido) / 1200) * 255)))
-        alpha = min(transicao, fade_saida)
-
-        overlay = pygame.Surface((LARGURA, ALTURA), pygame.SRCALPHA)
-        overlay.fill((8, 12, 20, alpha))
-        tela.blit(overlay, (0, 0))
-
-        painel = pygame.Surface((620, 230), pygame.SRCALPHA)
-        painel.fill((15, 18, 28, 180))
-        tela.blit(painel, (LARGURA // 2 - 310, 110))
-
-        cor_titulo = cores_fase.get(fase_atual, AZUL_NEON)
-        txt_titulo = texto_com_borda(fonte_titulo, f"FASE {fase_atual}", cor_titulo)
-        txt_msg = texto_com_borda(fonte_texto, mensagens.get(fase_atual, "Atenção: novos inimigos se aproximam."), BRANCO)
-        segundos_restantes = max(1, int((duracao_intro - tempo_decorrido) / 1000) + 1)
-        txt_contador = texto_com_borda(fonte_hud, f"Início em {segundos_restantes}s", AMARELO)
-
-        tela.blit(txt_titulo, (LARGURA // 2 - txt_titulo.get_width() // 2, 150))
-        tela.blit(txt_msg, (LARGURA // 2 - txt_msg.get_width() // 2, 240))
-        tela.blit(txt_contador, (LARGURA // 2 - txt_contador.get_width() // 2, 305))
-
-        pygame.display.flip()
-
-        for evento in pygame.event.get():
-            if evento.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
-            if evento.type == pygame.VIDEORESIZE:
-                atualizar_tamanho_tela(evento)
+    _tela_intro_fase(
+        fase_atual, tela, relogio, (fonte_titulo, fonte_texto, fonte_hud),
+        (fundo_fase_1, fundo_fase_2, fundo_fase_3, fundo_fase_4),
+        atualizar_tamanho_tela, gerar_som_inicio_fase,
+    )
 
 
 def tela_vitoria(pontos, moedas, modo_jogo="asteroides", nave_escolhida="Vanguard.png"):
-    salvar_pontuacao(pontos, modo_jogo, nave_escolhida)
-    ranking = listar_ranking(5)
-    rodando = True
-    while rodando:
-        relogio.tick(60)
-        if fundo_img:
-            tela.blit(fundo_img, (0, 0))
-        else:
-            tela.fill(PRETO)
-        
-        txt_v = texto_com_borda(fonte_titulo, "FASE CONCLUÍDA!", AMARELO)
-        txt_frase = texto_com_borda(fonte_texto, "Parabéns, soldado! Você limpou o setor de asteroides.", BRANCO)
-        
-        txt_resumo_p = texto_com_borda(fonte_texto, f"Pontuação: {pontos}", BRANCO)
-        txt_resumo_m = texto_com_borda(fonte_texto, f"Moedas Coletadas: {moedas} 🪙", AMARELO)
-        
-        txt_continuar = texto_com_borda(fonte_hud, "Pressione [ENTER] para voltar ao Hangar", AZUL_NEON)
-        
-        tela.blit(txt_v, (LARGURA//2 - txt_v.get_width()//2, 140))
-        tela.blit(txt_frase, (LARGURA//2 - txt_frase.get_width()//2, 210))
-        
-        tela.blit(txt_resumo_p, (LARGURA//2 - txt_resumo_p.get_width()//2, 290))
-        tela.blit(txt_resumo_m, (LARGURA//2 - txt_resumo_m.get_width()//2, 325))
-
-        txt_ranking = texto_com_borda(fonte_hud, "TOP 5", AMARELO)
-        tela.blit(txt_ranking, (LARGURA // 2 - txt_ranking.get_width() // 2, 360))
-        for idx, item in enumerate(ranking[:5], start=1):
-            linha = texto_com_borda(fonte_texto, f"{idx}. {item['pontuacao']} - {item['modo']} - {item['nave']}", BRANCO)
-            tela.blit(linha, (LARGURA // 2 - linha.get_width() // 2, 390 + (idx - 1) * 22))
-        
-        tela.blit(txt_continuar, (LARGURA//2 - txt_continuar.get_width()//2, 520))
-        
-        pygame.display.flip()
-        
-        for evento in pygame.event.get():
-            if evento.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
-            if evento.type == pygame.VIDEORESIZE:
-                atualizar_tamanho_tela(evento)
-            if evento.type == pygame.KEYDOWN:
-                if evento.key == pygame.K_RETURN or evento.key == pygame.K_KP_ENTER:
-                    rodando = False
+    _tela_vitoria(
+        pontos, moedas, modo_jogo, nave_escolhida, tela, relogio,
+        (fonte_titulo, fonte_texto, fonte_hud), fundo_img,
+        atualizar_tamanho_tela, salvar_pontuacao, listar_ranking,
+    )
 
 
 def tela_game_over(pontos, moedas, modo_jogo="asteroides", nave_escolhida="Vanguard.png"):
-    salvar_pontuacao(pontos, modo_jogo, nave_escolhida)
-    ranking = listar_ranking(5)
-    rodando = True
-    while rodando:
-        relogio.tick(60)
-        if fundo_fim:
-            tela.blit(fundo_fim, (0, 0))
-        else:
-            tela.fill(PRETO)
-        
-        txt_go = texto_com_borda(fonte_titulo, "FIM DE JOGO", VERMELHO)
-        txt_frase = texto_com_borda(fonte_texto, '"A frota caiu, mas a lenda do Soldado Cósmico nunca morre!"', BRANCO)
-        
-        txt_resumo_p = texto_com_borda(fonte_texto, f"Pontuação Final: {pontos}", BRANCO)
-        txt_resumo_m = texto_com_borda(fonte_texto, f"Moedas Coletadas: {moedas} 🪙", AMARELO)
-        
-        txt_continuar = texto_com_borda(fonte_hud, "Pressione [ENTER] para voltar ao Hangar", AZUL_NEON)
-        
-        tela.blit(txt_go, (LARGURA//2 - txt_go.get_width()//2, 110))
-        tela.blit(txt_frase, (LARGURA//2 - txt_frase.get_width()//2, 180))
-        
-        tela.blit(txt_resumo_p, (LARGURA//2 - txt_resumo_p.get_width()//2, 250))
-        tela.blit(txt_resumo_m, (LARGURA//2 - txt_resumo_m.get_width()//2, 285))
+    _tela_game_over(
+        pontos, moedas, modo_jogo, nave_escolhida, tela, relogio,
+        (fonte_titulo, fonte_texto, fonte_hud), fundo_fim,
+        atualizar_tamanho_tela, salvar_pontuacao, listar_ranking,
+    )
 
-        txt_ranking = texto_com_borda(fonte_hud, "TOP 5", AMARELO)
-        tela.blit(txt_ranking, (LARGURA // 2 - txt_ranking.get_width() // 2, 330))
-        for idx, item in enumerate(ranking[:5], start=1):
-            linha = texto_com_borda(fonte_texto, f"{idx}. {item['pontuacao']} - {item['modo']} - {item['nave']}", BRANCO)
-            tela.blit(linha, (LARGURA // 2 - linha.get_width() // 2, 360 + (idx - 1) * 22))
-        
-        tela.blit(txt_continuar, (LARGURA//2 - txt_continuar.get_width()//2, 500))
-        
-        pygame.display.flip()
-        
-        for evento in pygame.event.get():
-            if evento.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
-            if evento.type == pygame.VIDEORESIZE:
-                atualizar_tamanho_tela(evento)
-            if evento.type == pygame.KEYDOWN:
-                if evento.key == pygame.K_RETURN or evento.key == pygame.K_KP_ENTER:
-                    rodando = False
+
+def tela_conquistas(dados_jogador):
+    _tela_conquistas(
+        dados_jogador, tela, relogio, (fonte_titulo, fonte_texto, fonte_hud),
+        fundo_img, atualizar_tamanho_tela, listar_conquistas,
+    )
+
 
 if __name__ == "__main__":
-    dados_jogador = carregar_dados()
+    inicializar_app()
+    dados_jogador = validar_dados_jogador(carregar_dados())
     
     while True:
         tela_boas_vindas()
@@ -1071,7 +278,13 @@ if __name__ == "__main__":
         venceu = False
 
         if modo_jogo == "infinito":
-            pontos_partida, moedas_partida, venceu = jogo_principal(nave_escolhida, dados_jogador["niveis_melhorias"], fase_atual, modo_jogo)
+            pontos_partida, moedas_partida, venceu = jogo_principal(
+                nave_escolhida,
+                dados_jogador["niveis_melhorias"],
+                fase_atual,
+                modo_jogo,
+                dados_jogador,
+            )
             pontos_totais += pontos_partida
             moedas_totais += moedas_partida
             dados_jogador["moedas"] += moedas_partida
@@ -1081,7 +294,13 @@ if __name__ == "__main__":
 
         while fase_atual <= 4:
             tela_intro_fase(fase_atual)
-            pontos_partida, moedas_partida, venceu = jogo_principal(nave_escolhida, dados_jogador["niveis_melhorias"], fase_atual, modo_jogo)
+            pontos_partida, moedas_partida, venceu = jogo_principal(
+                nave_escolhida,
+                dados_jogador["niveis_melhorias"],
+                fase_atual,
+                modo_jogo,
+                dados_jogador,
+            )
             pontos_totais += pontos_partida
             moedas_totais += moedas_partida
 

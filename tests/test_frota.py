@@ -118,13 +118,93 @@ def test_titan_aumenta_duracao_do_especial_com_upgrade():
     assert especial.vida > 36
 
 
-def test_titan_especial_tem_escala_de_dano_e_raio():
-    jogador = Nave(100, 100, "Titan.png", {"velocidade": 1, "cadencia": 1, "especial": 3})
+def test_titan_especial_tem_raio_limitado_e_dano_escalavel():
+    raios = [TiroEspecialTitan(100, 100, nivel=nivel).raio for nivel in range(1, 6)]
 
+    assert raios == [83, 98, 113, 120, 120]
+    assert all(raio <= 120 for raio in raios)
+    assert TiroEspecialTitan(100, 100, nivel=3).dano >= 3
+
+
+def test_titan_efeito_visual_nao_ultrapassa_o_raio_ao_terminar():
+    especial = TiroEspecialTitan(100, 100, nivel=5)
+
+    for _ in range(especial.vida):
+        especial.update()
+
+    centro = especial.image.get_rect().center
+    pixels_visiveis = [
+        (x, y)
+        for x in range(especial.image.get_width())
+        for y in range(especial.image.get_height())
+        if especial.image.get_at((x, y)).a > 0
+    ]
+    maior_distancia = max(
+        ((x - centro[0]) ** 2 + (y - centro[1]) ** 2) ** 0.5
+        for x, y in pixels_visiveis
+    )
+
+    assert not especial.alive()
+    assert maior_distancia <= especial.raio + 1
+
+
+def test_titan_efeito_visual_usa_paleta_vermelha():
+    especial = TiroEspecialTitan(100, 100)
+    cores_visiveis = {
+        especial.image.get_at((x, y))[:3]
+        for x in range(especial.image.get_width())
+        for y in range(especial.image.get_height())
+        if especial.image.get_at((x, y)).a > 0
+    }
+
+    assert any(vermelho > verde and vermelho > azul for vermelho, verde, azul in cores_visiveis)
+    assert not any(azul > vermelho for vermelho, _, azul in cores_visiveis)
+
+
+def test_especiais_das_outras_naves_tem_papeis_balanceados():
+    vanguard = Nave(100, 100, "Vanguard.png").criar_tiro_especial()
+    scout = Nave(100, 100, "Scout.png").criar_tiro_especial()[0]
+    phantom = Nave(100, 100, "Phantom.png").criar_tiro_especial()
+    aegis = Nave(100, 100, "Aegis.png").criar_tiro_especial()[0]
+
+    assert len(vanguard) == 3
+    assert all(tiro.dano_inimigo == 2 and tiro.limite_alvos == 3 for tiro in vanguard)
+    assert scout.dano_inimigo == 5
+    assert scout.limite_alvos is None
+    assert len(phantom) == 7
+    assert all(tiro.dano_inimigo == 1 and tiro.limite_alvos == 1 for tiro in phantom)
+    assert aegis.dano_inimigo == 3
+    assert aegis.intervalo_dano == 20
+    assert aegis.max_vida == 180
+
+
+def test_especial_vanguard_atinge_cada_alvo_uma_vez_e_perfura_tres():
+    especial = Nave(100, 100, "Vanguard.png").criar_tiro_especial()[0]
+    grupo = pygame.sprite.Group(especial)
+    alvos = [pygame.sprite.Sprite() for _ in range(4)]
+
+    assert especial.registrar_impacto_inimigo(alvos[0])
+    assert not especial.registrar_impacto_inimigo(alvos[0])
+    assert especial.registrar_impacto_inimigo(alvos[1])
+    assert especial.alive()
+    assert especial.registrar_impacto_inimigo(alvos[2])
+
+    assert not especial.alive()
+    assert len(grupo) == 0
+
+def test_aegis_especial_dura_no_maximo_tres_segundos_ativo():
+    jogador = Nave(100, 100, "Aegis.png")
+    jogador.aegis_ativo = True
     especial = jogador.criar_tiro_especial()[0]
+    grupo = pygame.sprite.Group(especial)
+    assert especial in grupo
 
-    assert especial.raio > 90
-    assert especial.dano >= 3
+    for _ in range(especial.max_vida):
+        especial.update()
+
+    assert not especial.alive()
+    assert len(grupo) == 0
+    assert not jogador.aegis_ativo
 
 
 def test_modo_infinito_nao_gera_frota_inimiga():
@@ -150,6 +230,7 @@ def test_ranking_salva_pontuacao_no_banco():
 
 
 def test_modo_frota_renderiza_hud_sem_erro():
+    main.inicializar_app()
     texto = main.texto_com_borda(main.fonte_hud, "MODO: FROTA INIMIGA", main.AMARELO)
 
     assert texto is not None

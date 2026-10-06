@@ -1,15 +1,4 @@
 
-import os
-
-os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
-os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
-
-import pygame
-
-# Inicialização do Pygame e Fontes
-pygame.init()
-pygame.font.init()
-
 # Dimensões da Tela
 LARGURA = 800
 ALTURA = 600

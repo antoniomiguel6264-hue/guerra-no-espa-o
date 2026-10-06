@@ -1,5 +1,5 @@
 {
-    "moedas": 84456,
+    "moedas": 3077,
     "naves_desbloqueadas": [
         "Vanguard.png",
         "Scout.png",
@@ -8,8 +8,11 @@
         "Aegis.png"
     ],
     "niveis_melhorias": {
-        "velocidade": 14,
-        "cadencia": 20,
-        "especial": 18
-    }
+        "velocidade": 22,
+        "cadencia": 59,
+        "especial": 42
+    },
+    "conquistas_desbloqueadas": [
+        "intocavel"
+    ]
 }
