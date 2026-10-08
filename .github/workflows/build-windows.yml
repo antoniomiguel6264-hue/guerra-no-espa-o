@@ -1,0 +1,48 @@
+name: Build Windows executable
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build dependencies
+        run: python -m pip install pygame pyinstaller
+
+      - name: Build executable
+        shell: pwsh
+        run: |
+          $pyinstallerArgs = @(
+            "--noconfirm",
+            "--clean",
+            "--onedir",
+            "--windowed",
+            "--name",
+            "GuerraNoEspaco"
+          )
+
+          Get-ChildItem -Path . -File |
+            Where-Object { $_.Extension -in @(".png", ".jpg", ".jpeg") } |
+            ForEach-Object {
+            $pyinstallerArgs += @("--add-data", "$($_.Name);.")
+          }
+
+          $pyinstallerArgs += "main.py"
+          python -m PyInstaller @pyinstallerArgs
+
+      - name: Upload Windows build
+        uses: actions/upload-artifact@v4
+        with:
+          name: GuerraNoEspaco-Windows
+          path: dist/GuerraNoEspaco/
+          if-no-files-found: error
