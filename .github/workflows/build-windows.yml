@@ -27,6 +27,8 @@ jobs:
             "--clean",
             "--onedir",
             "--windowed",
+            "--icon",
+            "icone.ico",
             "--name",
             "GuerraNoEspaco"
           )

@@ -16,6 +16,7 @@ class GameResources:
     relogio: pygame.time.Clock
     fontes: tuple[pygame.font.Font, pygame.font.Font, pygame.font.Font]
     fundo_img: pygame.Surface | None
+    fundo_infinito: pygame.Surface | None
     fundos_fase: tuple[
         pygame.Surface | None,
         pygame.Surface | None,
@@ -72,6 +73,11 @@ def criar_recursos_jogo(
         resolver_caminho_arquivo,
         tamanho_tela,
     )
+    fundo_infinito = _carregar_fundo(
+        "infinito.jpg",
+        resolver_caminho_arquivo,
+        tamanho_tela,
+    )
     fundos_fase = tuple(
         _carregar_fundo(f"fase{fase}.jpg", resolver_caminho_arquivo, tamanho_tela)
         for fase in range(1, 5)
@@ -93,6 +99,7 @@ def criar_recursos_jogo(
         relogio=pygame.time.Clock(),
         fontes=fontes,
         fundo_img=fundo_img,
+        fundo_infinito=fundo_infinito,
         fundos_fase=fundos_fase,
         fundo_selecao=fundo_selecao,
         fundo_fim=fundo_fim,

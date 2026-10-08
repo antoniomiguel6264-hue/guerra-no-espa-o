@@ -59,6 +59,7 @@ fonte_titulo = None
 fonte_texto = None
 fonte_hud = None
 fundo_img = None
+fundo_infinito = None
 fundo_fase_1 = None
 fundo_fase_2 = None
 fundo_fase_3 = None
@@ -69,7 +70,7 @@ fundo_fim = None
 
 def inicializar_app():
     global ALTURA, LARGURA, fundo_fase_1, fundo_fase_2, fundo_fase_3
-    global fundo_fase_4, fundo_fim, fundo_img, fundo_selecao
+    global fundo_fase_4, fundo_fim, fundo_img, fundo_infinito, fundo_selecao
     global fonte_hud, fonte_texto, fonte_titulo, modo_tela, recursos_jogo
     global relogio, tela
 
@@ -81,6 +82,7 @@ def inicializar_app():
     relogio = recursos_jogo.relogio
     fonte_titulo, fonte_texto, fonte_hud = recursos_jogo.fontes
     fundo_img = recursos_jogo.fundo_img
+    fundo_infinito = recursos_jogo.fundo_infinito
     fundo_fase_1, fundo_fase_2, fundo_fase_3, fundo_fase_4 = recursos_jogo.fundos_fase
     fundo_selecao = recursos_jogo.fundo_selecao
     fundo_fim = recursos_jogo.fundo_fim
@@ -214,6 +216,7 @@ def jogo_principal(
         clock=relogio,
         fonts=(fonte_titulo, fonte_texto, fonte_hud),
         backgrounds=(fundo_fase_1, fundo_fase_2, fundo_fase_3, fundo_fase_4),
+        infinite_background=fundo_infinito,
         resize_display=atualizar_tamanho_tela,
         create_initial_asteroids=criar_asteroides_iniciais,
         create_infinite_asteroids=criar_asteroides_infinito,

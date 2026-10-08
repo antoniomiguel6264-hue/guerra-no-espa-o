@@ -16,3 +16,6 @@ baixar a versão:
    `GuerraNoEspaco`.
 
 Mantenha a pasta extraída inteira: o `.exe` usa arquivos que ficam ao lado dele.
+
+O ícone do executável do Windows é definido por `icone.ico`. Para trocá-lo,
+substitua esse arquivo e execute novamente o workflow.

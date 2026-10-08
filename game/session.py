@@ -32,12 +32,25 @@ class SessionServices:
     clock: pygame.time.Clock
     fonts: tuple
     backgrounds: tuple
+    infinite_background: pygame.Surface | None
     resize_display: Callable[[pygame.event.Event], tuple[int, int]]
     create_initial_asteroids: Callable
     create_infinite_asteroids: Callable
     asteroid_damage: Callable
     save_player: Callable
     play_sound: Callable
+
+
+def _selecionar_fundo_sessao(modo_jogo, fase_atual, backgrounds, infinite_background):
+    if modo_jogo == "infinito":
+        return infinite_background
+    if fase_atual == 1:
+        return backgrounds[0]
+    if fase_atual == 2:
+        return backgrounds[1]
+    if fase_atual == 3:
+        return backgrounds[2]
+    return backgrounds[3]
 
 
 def run_game_session(
@@ -62,14 +75,12 @@ def run_game_session(
     modo_frota = modo_jogo == "frota_inimiga"
     modo_infinito = modo_jogo == "infinito"
 
-    if fase_atual == 1:
-        fundo_fase = fundo_fase_1
-    elif fase_atual == 2:
-        fundo_fase = fundo_fase_2
-    elif fase_atual == 3:
-        fundo_fase = fundo_fase_3
-    else:
-        fundo_fase = fundo_fase_4
+    fundo_fase = _selecionar_fundo_sessao(
+        modo_jogo,
+        fase_atual,
+        services.backgrounds,
+        services.infinite_background,
+    )
 
     jogador = Nave(largura // 2, altura - 80, arquivo_nave, niveis_melhorias)
     todos_sprites.add(jogador)
