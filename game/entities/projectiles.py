@@ -7,25 +7,39 @@ from config import AMARELO, AZUL_NEON
 
 
 class Tiro(pygame.sprite.Sprite):
-    def __init__(self, x, y, angulo):
+    def __init__(
+        self,
+        x,
+        y,
+        angulo,
+        velocidade=16,
+        dano=2,
+        largura=6,
+        comprimento=16,
+        cor=AMARELO,
+    ):
         super().__init__()
-        self.image_original = pygame.Surface((6, 16), pygame.SRCALPHA)
-        self.image_original.fill(AMARELO)
+        self.image_original = pygame.Surface((largura, comprimento), pygame.SRCALPHA)
+        self.image_original.fill(cor)
         
         self.angulo = angulo
         self.image = pygame.transform.rotate(self.image_original, self.angulo - 90)
         
         self.rect = self.image.get_rect()
         self.rect.center = (x, y)
+        self.x = float(x)
+        self.y = float(y)
         
         rad = math.radians(self.angulo)
-        self.velocidade = 12
+        self.velocidade = velocidade
+        self.dano_inimigo = dano
         self.vx = math.cos(rad) * self.velocidade
         self.vy = -math.sin(rad) * self.velocidade
 
     def update(self):
-        self.rect.x += self.vx
-        self.rect.y += self.vy
+        self.x += self.vx
+        self.y += self.vy
+        self.rect.center = (round(self.x), round(self.y))
         
         if self.rect.right < 0 or self.rect.left > config.LARGURA or self.rect.bottom < 0 or self.rect.top > config.ALTURA:
             self.kill()

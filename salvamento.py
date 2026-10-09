@@ -19,6 +19,12 @@ def normalizar_dados_jogador(dados):
             "velocidade": 1,
             "cadencia": 1,
             "especial": 1,
+            "dano": 1,
+            "defesa": 1,
+            "vida": 1,
+            "manobrabilidade": 1,
+            "recarga": 1,
+            "recompensa": 1,
         },
         "conquistas_desbloqueadas": [],
     }
@@ -74,7 +80,13 @@ def carregar_dados():
         "niveis_melhorias": {
             "velocidade": 1,
             "cadencia": 1,
-            "especial": 1
+            "especial": 1,
+            "dano": 1,
+            "defesa": 1,
+            "vida": 1,
+            "manobrabilidade": 1,
+            "recarga": 1,
+            "recompensa": 1,
         },
         "conquistas_desbloqueadas": [],
     }
@@ -146,7 +158,20 @@ def listar_ranking(limit=10):
     with closing(sqlite3.connect(ARQUIVO_RANKING)) as conexao:
         with conexao:
             registros = conexao.execute(
-                "SELECT pontuacao, modo, nave, data FROM ranking ORDER BY pontuacao DESC, id ASC LIMIT ?",
+                """
+                SELECT pontuacao, modo, nave, data
+                FROM ranking AS atual
+                WHERE atual.id = (
+                    SELECT historico.id
+                    FROM ranking AS historico
+                    WHERE historico.modo = atual.modo
+                      AND historico.nave = atual.nave
+                    ORDER BY historico.pontuacao DESC, historico.id ASC
+                    LIMIT 1
+                )
+                ORDER BY pontuacao DESC, id ASC
+                LIMIT ?
+                """,
                 (int(limit),),
             ).fetchall()
     return [

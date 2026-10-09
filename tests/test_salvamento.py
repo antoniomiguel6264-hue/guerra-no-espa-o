@@ -39,7 +39,17 @@ def test_salvar_dados_grava_dados_normalizados_atomicos(tmp_path, monkeypatch):
     assert json.loads(caminho_save.read_text()) == {
         "moedas": 25,
         "naves_desbloqueadas": ["Vanguard.png", "Scout.png"],
-        "niveis_melhorias": {"velocidade": 2, "cadencia": 1, "especial": 1},
+        "niveis_melhorias": {
+            "velocidade": 2,
+            "cadencia": 1,
+            "especial": 1,
+            "dano": 1,
+            "defesa": 1,
+            "vida": 1,
+            "manobrabilidade": 1,
+            "recarga": 1,
+            "recompensa": 1,
+        },
         "conquistas_desbloqueadas": [],
         "conquistas_desbloqueadas": [],
     }
@@ -81,6 +91,12 @@ def test_carregar_save_corrompido_retorna_padrao(tmp_path, monkeypatch, capsys):
         "velocidade": 1,
         "cadencia": 1,
         "especial": 1,
+        "dano": 1,
+        "defesa": 1,
+        "vida": 1,
+        "manobrabilidade": 1,
+        "recarga": 1,
+        "recompensa": 1,
     }
     assert "Erro ao carregar save" in capsys.readouterr().out
 
@@ -108,3 +124,21 @@ def test_ranking_fecha_conexao_e_salva_no_banco_de_teste(tmp_path, monkeypatch):
     assert ranking[0]["modo"] == "frota_inimiga"
     assert ranking[0]["nave"] == "Aegis.png"
     assert ranking[0]["data"]
+
+
+def test_ranking_mostra_recorde_independente_por_modo_e_nave(tmp_path, monkeypatch):
+    caminho_db = tmp_path / "ranking.db"
+    monkeypatch.setattr(salvamento, "ARQUIVO_RANKING", str(caminho_db))
+
+    salvamento.salvar_pontuacao(450, "asteroides", "Aegis.png")
+    salvamento.salvar_pontuacao(700, "asteroides", "Aegis.png")
+    salvamento.salvar_pontuacao(600, "infinito", "Aegis.png")
+    salvamento.salvar_pontuacao(500, "asteroides", "Scout.png")
+
+    ranking = salvamento.listar_ranking(limit=10)
+
+    assert [(item["pontuacao"], item["modo"], item["nave"]) for item in ranking] == [
+        (700, "asteroides", "Aegis.png"),
+        (600, "infinito", "Aegis.png"),
+        (500, "asteroides", "Scout.png"),
+    ]

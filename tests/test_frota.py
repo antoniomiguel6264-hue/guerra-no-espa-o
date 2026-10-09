@@ -17,7 +17,15 @@ import pygame
 
 import config
 import main
-from entidades import Nave, NaveInimiga, TiroEspecialTitan, calcular_meta_frota, gerar_frota_inimiga
+from entidades import (
+    ChefeFrota,
+    Nave,
+    NaveInimiga,
+    Tiro,
+    TiroEspecialTitan,
+    calcular_meta_frota,
+    gerar_frota_inimiga,
+)
 from salvamento import listar_ranking, salvar_pontuacao
 
 
@@ -56,6 +64,108 @@ def test_frota_inimiga_tem_vida_e_tiro_fraco():
     assert tiro.dano == 1
 
 
+def test_chefe_frota_tem_vida_escalavel_e_alternancia_de_salvas():
+    chefe = ChefeFrota(400, 90, fase_atual=2)
+    alvo = pygame.sprite.Sprite()
+    alvo.rect = pygame.Rect(400, 500, 40, 40)
+
+    primeira_salva = chefe.criar_tiros(alvo)
+    chefe.cooldown_tiro = 0
+    segunda_salva = chefe.criar_tiros(alvo)
+
+    assert chefe.vida == chefe.vida_maxima == 200
+    assert len(primeira_salva) == len(segunda_salva) == 3
+    assert {tiro.velocidade for tiro in primeira_salva} == {5}
+    assert {tiro.velocidade for tiro in segunda_salva} == {7}
+    assert chefe.cooldown_tiro > 0
+
+
+def test_chefe_carrega_imagem_correspondente_a_fase(monkeypatch):
+    pygame.init()
+    pygame.display.set_mode((800, 600))
+    imagens_carregadas = []
+
+    def carregar_imagem(caminho):
+        nome_arquivo = os.path.basename(caminho)
+        imagens_carregadas.append(nome_arquivo)
+        if nome_arquivo.endswith(".jpg"):
+            raise pygame.error("imagem JPG ainda não está disponível")
+        return pygame.Surface((300, 200), pygame.SRCALPHA)
+
+    monkeypatch.setattr(pygame.image, "load", carregar_imagem)
+    nomes_esperados = ("chefe.png", "chefe2.png", "chefe3.png", "chefe4.png")
+
+    for fase, nome_esperado in enumerate(nomes_esperados, start=1):
+        chefe = ChefeFrota(400, 90, fase_atual=fase)
+
+        assert chefe.imagem_arquivo == nome_esperado
+        assert imagens_carregadas[-2:] == [
+            f"{nome_esperado.removesuffix('.png')}.jpg",
+            nome_esperado,
+        ]
+        assert chefe.image.get_width() <= 180
+        assert chefe.image.get_height() <= 120
+
+
+def test_tiro_basico_tem_mais_dano_e_velocidade():
+    tiro = Tiro(100, 100, 90)
+
+    assert tiro.velocidade == 16
+    assert tiro.dano_inimigo == 2
+    assert tiro.vy == -16
+
+
+def test_tiro_basico_preserva_trajetoria_diagonal():
+    tiro = Tiro(100, 100, 45)
+
+    for _ in range(10):
+        tiro.update()
+
+    deslocamento_esperado = tiro.velocidade * 10 / 2**0.5
+    assert abs(tiro.rect.centerx - (100 + deslocamento_esperado)) <= 1
+    assert abs(tiro.rect.centery - (100 - deslocamento_esperado)) <= 1
+
+
+def test_tiros_basicos_variem_por_modelo_mantendo_dano_total_equilibrado():
+    scout = Nave(100, 100, "Scout.png").criar_tiros_basicos()
+    titan = Nave(100, 100, "Titan.png").criar_tiros_basicos()
+    phantom = Nave(100, 100, "Phantom.png").criar_tiros_basicos()
+    aegis = Nave(100, 100, "Aegis.png").criar_tiros_basicos()
+    vanguard = Nave(100, 100, "Vanguard.png").criar_tiros_basicos()
+
+    assert len(scout) == len(titan) == len(aegis) == len(vanguard) == 1
+    assert len(phantom) == 2
+    assert scout[0].velocidade > vanguard[0].velocidade
+    assert titan[0].velocidade < vanguard[0].velocidade
+    assert titan[0].image_original.get_width() > vanguard[0].image_original.get_width()
+    assert aegis[0].image_original.get_width() > vanguard[0].image_original.get_width()
+    todos_os_tiros = (scout, titan, phantom, aegis, vanguard)
+    assert all(
+        sum(tiro.dano_inimigo for tiro in tiros) == 2
+        for tiros in todos_os_tiros
+    )
+    assert len({(tiro.rect.centerx, tiro.rect.centery) for tiro in phantom}) == 2
+
+
+def test_upgrade_de_dano_aumenta_dano_total_dos_tiros_basicos():
+    for arquivo_nave in (
+        "Vanguard.png",
+        "Scout.png",
+        "Titan.png",
+        "Phantom.png",
+        "Aegis.png",
+    ):
+        nave = Nave(
+            100,
+            100,
+            arquivo_nave,
+            {"velocidade": 1, "cadencia": 1, "especial": 1, "dano": 3},
+        )
+        tiros = nave.criar_tiros_basicos()
+
+        assert sum(tiro.dano_inimigo for tiro in tiros) == 4
+
+
 def test_jogador_usa_barra_de_vida():
     jogador = Nave(100, 100, "Vanguard.png")
 
@@ -87,6 +197,71 @@ def test_jogador_ganha_energia_pelo_valor_passado():
 
     jogador.adicionar_energia(100)
     assert jogador.energia_especial == jogador.energia_maxima
+
+
+def test_jogador_ganha_energia_proporcional_ao_dano():
+    jogador = Nave(100, 100, "Vanguard.png")
+
+    jogador.adicionar_energia_por_dano(1)
+    assert jogador.energia_especial == 0
+
+    jogador.adicionar_energia_por_dano(1)
+    assert jogador.energia_especial == 1
+
+    jogador.adicionar_energia_por_dano(5)
+    assert jogador.energia_especial == 3
+    assert jogador.progresso_energia_especial == 50
+
+
+def test_upgrades_de_vida_manobrabilidade_e_recarga_alteram_a_nave():
+    base = Nave(100, 100, "Vanguard.png")
+    aprimorada = Nave(
+        100,
+        100,
+        "Vanguard.png",
+        {
+            "velocidade": 1,
+            "cadencia": 1,
+            "especial": 1,
+            "dano": 1,
+            "vida": 3,
+            "manobrabilidade": 2,
+            "recarga": 2,
+        },
+    )
+
+    assert aprimorada.vida_maxima == 140
+    assert aprimorada.velocidade_giro > base.velocidade_giro
+    aprimorada.adicionar_energia_por_dano(5)
+    assert aprimorada.energia_especial == 3
+
+
+def test_recarga_especial_nao_guarda_progresso_acima_do_limite():
+    jogador = Nave(
+        100,
+        100,
+        "Vanguard.png",
+        {"velocidade": 1, "cadencia": 1, "especial": 1, "recarga": 6},
+    )
+    jogador.energia_especial = 99
+
+    jogador.adicionar_energia_por_dano(5)
+
+    assert jogador.energia_especial == jogador.energia_maxima
+    assert jogador.progresso_energia_especial == 0
+
+
+def test_upgrade_de_recarga_aumenta_ganho_de_energia_direto():
+    jogador = Nave(
+        100,
+        100,
+        "Vanguard.png",
+        {"velocidade": 1, "cadencia": 1, "especial": 1, "recarga": 2},
+    )
+
+    jogador.adicionar_energia(20)
+
+    assert jogador.energia_especial == 24
 
 
 def test_jogador_recupera_vida_mais_generosamente():

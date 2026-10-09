@@ -2,7 +2,16 @@ import pygame
 import sys
 
 from config import AMARELO, AZUL_NEON, BRANCO, CINZA, VERMELHO
-from game.screens_common import _centralizar, _desenhar_fundo, texto_com_borda
+from game.balance import (
+    calcular_dano_recebido_frota,
+    calcular_taxa_recarga_especial,
+)
+from game.screens_common import (
+    _centralizar,
+    _desenhar_fundo,
+    animar_transicao,
+    texto_com_borda,
+)
 
 
 
@@ -20,11 +29,11 @@ def tela_selecao_nave(
     fonte_titulo, fonte_texto, fonte_hud = fontes
     dados_jogador = validar_dados_jogador(dados_jogador)
     naves_disponiveis = [
-        {"nome": "Vanguard", "arquivo": "Vanguard.png", "preco": 0, "descricao": "Padrão de patrulha (Gratuita)"},
-        {"nome": "Scout", "arquivo": "Scout.png", "preco": 50, "descricao": "Alta velocidade de locomoção."},
-        {"nome": "Titan", "arquivo": "Titan.png", "preco": 100, "descricao": "Blindagem pesada e dano alto."},
-        {"nome": "Phantom", "arquivo": "Phantom.png", "preco": 150, "descricao": "Disparadores de plasma velozes."},
-        {"nome": "Aegis", "arquivo": "Aegis.png", "preco": 250, "descricao": "Escudo supremo e laser total."},
+        {"nome": "Vanguard", "arquivo": "Vanguard.png", "preco": 0, "descricao": "Tiro equilibrado (Gratuita)"},
+        {"nome": "Scout", "arquivo": "Scout.png", "preco": 50, "descricao": "Tiro rápido e preciso."},
+        {"nome": "Titan", "arquivo": "Titan.png", "preco": 100, "descricao": "Projétil pesado e blindagem reforçada."},
+        {"nome": "Phantom", "arquivo": "Phantom.png", "preco": 150, "descricao": "Rajada dupla de plasma."},
+        {"nome": "Aegis", "arquivo": "Aegis.png", "preco": 250, "descricao": "Projétil largo e escudo supremo."},
     ]
     imagens_naves = {}
     for nave in naves_disponiveis:
@@ -36,6 +45,7 @@ def tela_selecao_nave(
         imagens_naves[nave["arquivo"]] = imagem
 
     indice_selecionado = 0
+    animar_entrada = True
     while True:
         relogio.tick(60)
         _desenhar_fundo(tela, fundo)
@@ -89,6 +99,9 @@ def tela_selecao_nave(
             ),
             500,
         )
+        if animar_entrada:
+            animar_transicao(tela, relogio)
+            animar_entrada = False
         pygame.display.flip()
 
         for evento in pygame.event.get():
@@ -111,11 +124,13 @@ def tela_selecao_nave(
                         or nave_atual["preco"] == 0
                     )
                     if ja_tem:
+                        animar_transicao(tela, relogio, entrada=False)
                         return nave_atual["arquivo"]
                     if dados_jogador["moedas"] >= nave_atual["preco"]:
                         dados_jogador["moedas"] -= nave_atual["preco"]
                         dados_jogador["naves_desbloqueadas"].append(nave_atual["arquivo"])
                         salvar_dados(dados_jogador)
+                        animar_transicao(tela, relogio, entrada=False)
                         return nave_atual["arquivo"]
 
 def tela_melhorias(
@@ -131,11 +146,43 @@ def tela_melhorias(
 ):
     fonte_titulo, fonte_texto, fonte_hud = fontes
     dados_jogador = validar_dados_jogador(dados_jogador)
-    opcoes = ["velocidade", "cadencia", "especial"]
-    custos = {"velocidade": 30, "cadencia": 40, "especial": 35}
-    nomes = {"velocidade": "Velocidade", "cadencia": "Cadência", "especial": "Especial"}
+    opcoes = [
+        "velocidade",
+        "cadencia",
+        "especial",
+        "dano",
+        "defesa",
+        "vida",
+        "manobrabilidade",
+        "recarga",
+        "recompensa",
+    ]
+    custos = {
+        "velocidade": 30,
+        "cadencia": 40,
+        "especial": 35,
+        "dano": 50,
+        "defesa": 60,
+        "vida": 45,
+        "manobrabilidade": 35,
+        "recarga": 50,
+        "recompensa": 55,
+    }
+    niveis_maximos = {"defesa": 5, "recarga": 6}
+    nomes = {
+        "velocidade": "Velocidade",
+        "cadencia": "Cadência",
+        "especial": "Especial",
+        "dano": "Dano",
+        "defesa": "Defesa",
+        "vida": "Vida",
+        "manobrabilidade": "Manobrabilidade",
+        "recarga": "Recarga",
+        "recompensa": "Recompensa",
+    }
     indice_selecionado = 0
     rodando = True
+    animar_entrada = True
 
     while rodando:
         relogio.tick(60)
@@ -154,6 +201,11 @@ def tela_melhorias(
             chave = opcoes[indice]
             nivel_atual = dados_jogador["niveis_melhorias"][chave]
             custo_atual = custos[chave] * nivel_atual
+            custo_texto = (
+                "Nível máximo"
+                if chave in niveis_maximos and nivel_atual >= niveis_maximos[chave]
+                else f"Custo: {custo_atual} 🪙"
+            )
             if offset == 0:
                 largura, altura, alpha, borda, texto_cor, y = 220, 140, 255, AMARELO, BRANCO, base_y
             else:
@@ -169,7 +221,7 @@ def tela_melhorias(
             textos = [
                 (nomes[chave], fonte_hud, texto_cor, y + 18),
                 (f"Nível: {nivel_atual}", fonte_texto, BRANCO, y + 48),
-                (f"Custo: {custo_atual} 🪙", fonte_texto, AMARELO, y + 72),
+                (custo_texto, fonte_texto, AMARELO, y + 72),
             ]
             for texto, fonte, cor, texto_y in textos:
                 renderizado = texto_com_borda(fonte, texto, cor)
@@ -179,6 +231,55 @@ def tela_melhorias(
                 duracao = calcular_duracao_especial_titan(nivel_atual)
                 texto_duracao = texto_com_borda(fonte_texto, f"Duração: {duracao:.1f}s", AZUL_NEON)
                 tela.blit(texto_duracao, (x - texto_duracao.get_width() // 2, y + 96))
+            elif chave == "dano":
+                dano = 2 + nivel_atual - 1
+                texto_dano = texto_com_borda(
+                    fonte_texto,
+                    f"Dano da rajada: {dano}",
+                    AZUL_NEON,
+                )
+                tela.blit(texto_dano, (x - texto_dano.get_width() // 2, y + 96))
+            elif chave == "defesa":
+                dano_recebido = calcular_dano_recebido_frota(nivel_atual)
+                texto_defesa = texto_com_borda(
+                    fonte_texto,
+                    f"Dano recebido na Frota: {dano_recebido}",
+                    AZUL_NEON,
+                )
+                tela.blit(texto_defesa, (x - texto_defesa.get_width() // 2, y + 96))
+            elif chave == "vida":
+                texto_vida = texto_com_borda(
+                    fonte_texto,
+                    "+20 vida máxima / nível",
+                    AZUL_NEON,
+                )
+                tela.blit(texto_vida, (x - texto_vida.get_width() // 2, y + 96))
+            elif chave == "manobrabilidade":
+                texto_mano = texto_com_borda(
+                    fonte_texto,
+                    f"Giro: {2.2 + (nivel_atual - 1) * 0.3:.1f}",
+                    AZUL_NEON,
+                )
+                tela.blit(texto_mano, (x - texto_mano.get_width() // 2, y + 96))
+            elif chave == "recarga":
+                taxa_recarga = calcular_taxa_recarga_especial(nivel_atual)
+                bonus_recarga = (taxa_recarga - 50) * 2
+                texto_recarga = texto_com_borda(
+                    fonte_texto,
+                    f"+{bonus_recarga}% de carga",
+                    AZUL_NEON,
+                )
+                tela.blit(texto_recarga, (x - texto_recarga.get_width() // 2, y + 96))
+            elif chave == "recompensa":
+                texto_recompensa = texto_com_borda(
+                    fonte_texto,
+                    f"+{nivel_atual - 1} moeda por inimigo",
+                    AZUL_NEON,
+                )
+                tela.blit(
+                    texto_recompensa,
+                    (x - texto_recompensa.get_width() // 2, y + 96),
+                )
 
         _centralizar(
             tela,
@@ -189,6 +290,9 @@ def tela_melhorias(
             ),
             500,
         )
+        if animar_entrada:
+            animar_transicao(tela, relogio)
+            animar_entrada = False
         pygame.display.flip()
 
         for evento in pygame.event.get():
@@ -208,9 +312,14 @@ def tela_melhorias(
                     chave = opcoes[indice_selecionado]
                     nivel = dados_jogador["niveis_melhorias"][chave]
                     custo = custos[chave] * nivel
-                    if dados_jogador["moedas"] >= custo:
+                    nivel_maximo = niveis_maximos.get(chave)
+                    if (
+                        (nivel_maximo is None or nivel < nivel_maximo)
+                        and dados_jogador["moedas"] >= custo
+                    ):
                         dados_jogador["moedas"] -= custo
                         dados_jogador["niveis_melhorias"][chave] += 1
                         salvar_dados(dados_jogador)
                 elif evento.key == pygame.K_SPACE:
+                    animar_transicao(tela, relogio, entrada=False)
                     rodando = False

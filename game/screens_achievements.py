@@ -2,7 +2,12 @@ import pygame
 import sys
 
 from config import AMARELO, AZUL_NEON, BRANCO
-from game.screens_common import _centralizar, _desenhar_fundo, texto_com_borda
+from game.screens_common import (
+    _centralizar,
+    _desenhar_fundo,
+    animar_transicao,
+    texto_com_borda,
+)
 
 
 
@@ -17,6 +22,7 @@ def tela_conquistas(
 ):
     fonte_titulo, fonte_texto, fonte_hud = fontes
     rodando = True
+    animar_entrada = True
     while rodando:
         relogio.tick(60)
         _desenhar_fundo(tela, fundo)
@@ -44,6 +50,9 @@ def tela_conquistas(
             texto_com_borda(fonte_hud, "Pressione [ESC] ou [ENTER] para voltar", AZUL_NEON),
             tela.get_height() - 65,
         )
+        if animar_entrada:
+            animar_transicao(tela, relogio)
+            animar_entrada = False
         pygame.display.flip()
 
         for evento in pygame.event.get():
@@ -59,4 +68,5 @@ def tela_conquistas(
                 pygame.K_KP_ENTER,
                 pygame.K_ESCAPE,
             ):
+                animar_transicao(tela, relogio, entrada=False)
                 rodando = False

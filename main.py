@@ -281,7 +281,7 @@ if __name__ == "__main__":
         venceu = False
 
         if modo_jogo == "infinito":
-            pontos_partida, moedas_partida, venceu = jogo_principal(
+            pontos_partida, moedas_partida, venceu, abandonada = jogo_principal(
                 nave_escolhida,
                 dados_jogador["niveis_melhorias"],
                 fase_atual,
@@ -292,23 +292,28 @@ if __name__ == "__main__":
             moedas_totais += moedas_partida
             dados_jogador["moedas"] += moedas_partida
             salvar_dados(dados_jogador)
-            tela_game_over(pontos_totais, moedas_totais, modo_jogo, nave_escolhida)
+            if not abandonada:
+                tela_game_over(pontos_totais, moedas_totais, modo_jogo, nave_escolhida)
             continue
 
         while fase_atual <= 4:
             tela_intro_fase(fase_atual)
-            pontos_partida, moedas_partida, venceu = jogo_principal(
+            pontos_partida, moedas_partida, venceu, abandonada = jogo_principal(
                 nave_escolhida,
                 dados_jogador["niveis_melhorias"],
                 fase_atual,
                 modo_jogo,
                 dados_jogador,
             )
+
             pontos_totais += pontos_partida
             moedas_totais += moedas_partida
 
             dados_jogador["moedas"] += moedas_partida
             salvar_dados(dados_jogador)
+
+            if abandonada:
+                break
 
             if not venceu:
                 tela_game_over(pontos_totais, moedas_totais, modo_jogo, nave_escolhida)

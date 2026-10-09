@@ -5,8 +5,10 @@ import random
 import config
 import pygame
 from config import AZUL_NEON
+from game.balance import calcular_vida_maxima, calcular_taxa_recarga_especial
 from game.entities.common import resolver_caminho_arquivo
 from game.entities.projectiles import (
+    Tiro,
     TiroEspecial,
     TiroEspecialAegis,
     TiroEspecialLaser,
@@ -32,20 +34,39 @@ class Nave(pygame.sprite.Sprite):
         self.rect.center = (x, y)
         
         if niveis_melhorias is None:
-            niveis_melhorias = {"velocidade": 1, "cadencia": 1, "especial": 1}
+            niveis_melhorias = {
+                "velocidade": 1,
+                "cadencia": 1,
+                "especial": 1,
+                "dano": 1,
+                "defesa": 1,
+                "vida": 1,
+                "manobrabilidade": 1,
+                "recarga": 1,
+                "recompensa": 1,
+            }
             
         self.niveis = niveis_melhorias
         
         self.x = float(x)
         self.y = float(y)
         self.angulo = 90
-        self.velocidade_giro = 2.2 + (self.niveis["velocidade"] - 1) * 0.25
-        self.aceleracao = 0.2 + (self.niveis["velocidade"] - 1) * 0.05
+        nivel_manobrabilidade = max(1, int(self.niveis.get("manobrabilidade", 1)))
+        self.velocidade_giro = (
+            2.2
+            + (self.niveis["velocidade"] - 1) * 0.25
+            + (nivel_manobrabilidade - 1) * 0.3
+        )
+        self.aceleracao = (
+            0.2
+            + (self.niveis["velocidade"] - 1) * 0.05
+            + (nivel_manobrabilidade - 1) * 0.025
+        )
         self.velocidade_maxima = 6 + (self.niveis["velocidade"] - 1) * 0.8
         self.vx = 0
         self.vy = 0
         
-        self.vida_maxima = 100
+        self.vida_maxima = calcular_vida_maxima(self.niveis.get("vida", 1))
         self.vida = self.vida_maxima
         self.dano_sofrido = False
         self.invulneravel = False
@@ -55,6 +76,7 @@ class Nave(pygame.sprite.Sprite):
         
         self.energia_especial = 0
         self.energia_maxima = 100
+        self.progresso_energia_especial = 0
         self.bonus_energia = 20 + (self.niveis["especial"] - 1) * 5
         self.duracao_especial = 36 + max(0, self.niveis["especial"] - 1) * 12
 
@@ -142,9 +164,31 @@ class Nave(pygame.sprite.Sprite):
         if quantidade is None:
             quantidade = 0
         quantidade = max(0, int(quantidade))
+        taxa_recarga = calcular_taxa_recarga_especial(
+            self.niveis.get("recarga", 1)
+        )
+        quantidade = round(quantidade * taxa_recarga / 50)
         self.energia_especial += quantidade
         if self.energia_especial > self.energia_maxima:
             self.energia_especial = self.energia_maxima
+
+    def adicionar_energia_por_dano(self, dano):
+        if self.energia_especial >= self.energia_maxima:
+            self.progresso_energia_especial = 0
+            return
+
+        taxa_recarga = calcular_taxa_recarga_especial(
+            self.niveis.get("recarga", 1)
+        )
+        self.progresso_energia_especial += max(0, int(dano)) * taxa_recarga
+        energia_ganha = self.progresso_energia_especial // 100
+        self.progresso_energia_especial %= 100
+        self.energia_especial = min(
+            self.energia_maxima,
+            self.energia_especial + energia_ganha,
+        )
+        if self.energia_especial >= self.energia_maxima:
+            self.progresso_energia_especial = 0
 
     def disparar_especial(self):
         if self.energia_especial >= self.energia_maxima:
@@ -153,6 +197,60 @@ class Nave(pygame.sprite.Sprite):
                 self.aegis_ativo = True
             return True 
         return False
+
+    def criar_tiros_basicos(self):
+        x = self.rect.centerx
+        y = self.rect.centery
+        tiros = None
+
+        if self.modelo == "scout":
+            tiros = [
+                Tiro(
+                    x, y, self.angulo,
+                    velocidade=22, largura=4, comprimento=22,
+                    cor=(90, 235, 255),
+                )
+            ]
+        elif self.modelo == "titan":
+            tiros = [
+                Tiro(
+                    x, y, self.angulo,
+                    velocidade=12, largura=10, comprimento=21,
+                    cor=(255, 145, 65),
+                )
+            ]
+        elif self.modelo == "phantom":
+            rad = math.radians(self.angulo)
+            deslocamento_x = math.sin(rad) * 8
+            deslocamento_y = math.cos(rad) * 8
+            tiros = [
+                Tiro(
+                    x + sinal * deslocamento_x,
+                    y + sinal * deslocamento_y,
+                    self.angulo,
+                    dano=1,
+                    largura=5,
+                    comprimento=14,
+                    cor=(235, 115, 255),
+                )
+                for sinal in (-1, 1)
+            ]
+        elif self.modelo == "aegis":
+            tiros = [
+                Tiro(
+                    x, y, self.angulo,
+                    velocidade=15, largura=10, comprimento=18,
+                    cor=(100, 255, 205),
+                )
+            ]
+
+        if tiros is None:
+            tiros = [Tiro(x, y, self.angulo)]
+
+        bonus_dano = max(0, int(self.niveis.get("dano", 1)) - 1)
+        for indice in range(bonus_dano):
+            tiros[indice % len(tiros)].dano_inimigo += 1
+        return tiros
 
     def criar_tiro_especial(self):
         x = self.rect.centerx

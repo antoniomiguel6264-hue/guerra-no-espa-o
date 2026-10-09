@@ -78,6 +78,8 @@ def desenhar_hud_jogo(
     botao_pausa,
     pausado=False,
     titan_restante=None,
+    chefe_vida=None,
+    chefe_vida_maxima=None,
 ):
     modo_infinito = modo_jogo == "infinito"
     modo_frota = modo_jogo == "frota_inimiga"
@@ -94,6 +96,36 @@ def desenhar_hud_jogo(
     pygame.draw.rect(tela_surface, (50, 50, 50), (20, 118, 180, 14))
     pygame.draw.rect(tela_surface, (60, 220, 120), (20, 118, largura_vida, 14))
     pygame.draw.rect(tela_surface, BRANCO, (20, 118, 180, 14), 1)
+
+    if chefe_vida is not None and chefe_vida_maxima:
+        largura_barra_chefe = 360
+        barra_chefe = pygame.Rect(
+            tela_surface.get_width() // 2 - largura_barra_chefe // 2,
+            24,
+            largura_barra_chefe,
+            20,
+        )
+        pygame.draw.rect(tela_surface, (45, 20, 30), barra_chefe, border_radius=6)
+        largura_vida_chefe = round(
+            largura_barra_chefe
+            * max(0, min(1, chefe_vida / chefe_vida_maxima))
+        )
+        if largura_vida_chefe:
+            pygame.draw.rect(
+                tela_surface,
+                (235, 55, 95),
+                (barra_chefe.x, barra_chefe.y, largura_vida_chefe, barra_chefe.height),
+                border_radius=6,
+            )
+        pygame.draw.rect(tela_surface, BRANCO, barra_chefe, 2, border_radius=6)
+        texto_chefe = texto_com_borda(fonte, "CHEFE", VERMELHO)
+        tela_surface.blit(
+            texto_chefe,
+            (
+                barra_chefe.centerx - texto_chefe.get_width() // 2,
+                barra_chefe.bottom + 3,
+            ),
+        )
 
     texto_botao = "Continuar" if pausado else "Pausar"
     desenhar_botao_pausa(tela_surface, botao_pausa, texto_botao, fonte, ativo=pausado)
@@ -156,6 +188,8 @@ def desenhar_tela_jogo(
         estado_hud["botao_pausa"],
         pausado=pausado,
         titan_restante=estado_hud.get("titan_restante"),
+        chefe_vida=estado_hud.get("chefe_vida"),
+        chefe_vida_maxima=estado_hud.get("chefe_vida_maxima"),
     )
 
     if pausado:
@@ -170,6 +204,21 @@ def desenhar_tela_jogo(
             BRANCO,
         )
         largura, altura = tela_surface.get_size()
+        botao_abandonar = estado_hud["botao_abandonar"]
+        pygame.draw.rect(
+            tela_surface,
+            (55, 25, 30),
+            botao_abandonar,
+            border_radius=8,
+        )
+        pygame.draw.rect(
+            tela_surface,
+            VERMELHO,
+            botao_abandonar,
+            2,
+            border_radius=8,
+        )
+        texto_abandonar = texto_com_borda(fonte_hud, "Abandonar partida", BRANCO)
         tela_surface.blit(
             texto_pausa,
             (largura // 2 - texto_pausa.get_width() // 2, altura // 2 - 40),
@@ -179,6 +228,13 @@ def desenhar_tela_jogo(
             (
                 largura // 2 - texto_instrucao.get_width() // 2,
                 altura // 2 + 30,
+            ),
+        )
+        tela_surface.blit(
+            texto_abandonar,
+            (
+                botao_abandonar.centerx - texto_abandonar.get_width() // 2,
+                botao_abandonar.centery - texto_abandonar.get_height() // 2,
             ),
         )
 

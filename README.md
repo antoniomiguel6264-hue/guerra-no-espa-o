@@ -1,6 +1,13 @@
 # guerra no espaço
  um jogo feito em pygame usando IA
 
+## Atalho Linux com ícone
+
+O executável Linux não incorpora um ícone de arquivo. Para abrir o jogo pelo
+desktop ou pelo menu de aplicativos com um ícone, gere o executável Linux e
+execute `./criar_atalho_linux.sh` na pasta do projeto. O script cria os
+atalhos usando `icone.png` e aponta para `dist/GuerraNoEspaco/GuerraNoEspaco`.
+
 ## Executável para Windows
 
 O executável é compilado pelo GitHub Actions em um runner Windows. Para gerar e

@@ -8,21 +8,26 @@ import pygame
 
 import config
 from config import FPS
-from game.entities.effects import Explosao
+from game.entities.effects import Explosao, Impacto
 from game.entities.enemies import (
     Asteroide,
+    ChefeFrota,
     calcular_meta_frota,
     gerar_frota_inimiga,
 )
 from game.entities.player import Nave
-from game.entities.projectiles import Tiro, TiroEspecialAegis
+from game.entities.projectiles import TiroEspecialAegis
 from game.achievements import (
     CONQUISTAS_POR_ID,
     TEMPO_SOBREVIVENTE_MS,
     acumular_tempo_sobrevivencia,
     desbloquear_conquista,
 )
-from game.balance import calcular_cura_inimigo_derrotado
+from game.balance import (
+    calcular_bonus_moedas_inimigo,
+    calcular_cura_inimigo_derrotado,
+    calcular_dano_recebido_frota,
+)
 from game.ui import desenhar_tela_jogo
 
 
@@ -51,6 +56,19 @@ def _selecionar_fundo_sessao(modo_jogo, fase_atual, backgrounds, infinite_backgr
     if fase_atual == 3:
         return backgrounds[2]
     return backgrounds[3]
+
+
+def _calcular_dano_colisao(
+    modo_jogo,
+    colidiu_com_asteroide,
+    dano_asteroide,
+    nivel_defesa=1,
+):
+    if colidiu_com_asteroide:
+        return dano_asteroide
+    if modo_jogo == "frota_inimiga":
+        return calcular_dano_recebido_frota(nivel_defesa)
+    return 20
 
 
 def run_game_session(
@@ -109,10 +127,21 @@ def run_game_session(
     cadencia_base = max(4, 12 - (niveis_melhorias["cadencia"] - 1) * 2)
     venceu = False
     botao_pausa = pygame.Rect(largura - 120, 20, 100, 35)
+    botao_abandonar = pygame.Rect(largura // 2 - 130, altura // 2 + 70, 260, 44)
+    abandonada = False
     tempo_inicio_infinito = pygame.time.get_ticks() if modo_infinito else 0
     tempo_sobrevivido_ms = 0
     notificacao_conquista = None
     notificacao_ate = 0
+    chefe = None
+    chefe_derrotado = False
+
+    def aplicar_dano_inimigo(inimigo, dano):
+        vida_anterior = max(0, inimigo.vida)
+        dano_efetivo = min(vida_anterior, max(0, dano))
+        inimigo.vida = vida_anterior - dano_efetivo
+        if modo_frota:
+            jogador.adicionar_energia_por_dano(dano_efetivo)
 
     def tentar_desbloquear(conquista_id):
         nonlocal notificacao_conquista, notificacao_ate
@@ -120,6 +149,29 @@ def run_game_session(
             services.save_player(dados_jogador)
             notificacao_conquista = CONQUISTAS_POR_ID[conquista_id]["nome"]
             notificacao_ate = pygame.time.get_ticks() + 4000
+
+    def registrar_derrota_inimigo(inimigo, pontos_base, cura=False):
+        nonlocal pontos, moedas, chefe_derrotado
+        inimigo.kill()
+        bonus_moedas = calcular_bonus_moedas_inimigo(
+            niveis_melhorias.get("recompensa", 1)
+        )
+
+        if getattr(inimigo, "eh_chefe", False):
+            chefe_derrotado = True
+            pontos += 100 + fase_atual * 50
+            moedas += 10 + bonus_moedas
+            jogador.recuperar_vida(calcular_cura_inimigo_derrotado(fase_atual))
+            jogador.adicionar_energia(30)
+            services.play_sound([180, 260, 520, 780], duracao=0.35, volume=0.4)
+            return
+
+        pontos += pontos_base
+        moedas += 2 + bonus_moedas
+        if cura:
+            jogador.recuperar_vida(calcular_cura_inimigo_derrotado(fase_atual))
+        jogador.adicionar_energia(12)
+        services.play_sound([260, 200], duracao=0.12, volume=0.25)
     
     while rodando:
         delta_ms = services.clock.tick(FPS)
@@ -134,10 +186,19 @@ def run_game_session(
             ):
                 largura, altura = services.resize_display(evento)
                 botao_pausa = pygame.Rect(largura - 120, 20, 100, 35)
+                botao_abandonar = pygame.Rect(
+                    largura // 2 - 130,
+                    altura // 2 + 70,
+                    260,
+                    44,
+                )
 
             if evento.type == pygame.MOUSEBUTTONDOWN and evento.button == 1:
                 if botao_pausa.collidepoint(evento.pos):
                     pausado = not pausado
+                elif pausado and botao_abandonar.collidepoint(evento.pos):
+                    abandonada = True
+                    rodando = False
 
             if evento.type == pygame.KEYDOWN:
                 if evento.key == pygame.K_p:
@@ -155,6 +216,9 @@ def run_game_session(
                             especiais.add(especial)
             elif evento.type == pygame.KEYUP and evento.key == pygame.K_k and jogador.modelo == "aegis":
                 jogador.aegis_ativo = False
+
+        if abandonada:
+            break
 
         if pausado:
             desenhar_tela_jogo(
@@ -174,6 +238,11 @@ def run_game_session(
                     "modo_jogo": modo_jogo,
                     "modelo_nave": jogador.modelo,
                     "botao_pausa": botao_pausa,
+                    "botao_abandonar": botao_abandonar,
+                    "chefe_vida": chefe.vida if chefe is not None and chefe.alive() else None,
+                    "chefe_vida_maxima": (
+                        chefe.vida_maxima if chefe is not None and chefe.alive() else None
+                    ),
                     "notificacao_conquista": (
                         notificacao_conquista
                         if pygame.time.get_ticks() < notificacao_ate
@@ -195,9 +264,9 @@ def run_game_session(
         
         if teclas[pygame.K_j]:
             if cooldown_tiro <= 0:
-                tiro = Tiro(jogador.rect.centerx, jogador.rect.centery, jogador.angulo)
-                todos_sprites.add(tiro)
-                tiros.add(tiro)
+                novos_tiros = jogador.criar_tiros_basicos()
+                todos_sprites.add(novos_tiros)
+                tiros.add(novos_tiros)
                 services.play_sound([420], duracao=0.08, volume=0.18)
                 cooldown_tiro = cadencia_base
                 
@@ -226,6 +295,9 @@ def run_game_session(
 
         colisoes_tiro = pygame.sprite.groupcollide(asteroides, tiros, True, True)
         for ast in colisoes_tiro:
+            impacto = Impacto(ast.rect.centerx, ast.rect.centery, "asteroide")
+            todos_sprites.add(impacto)
+            explosoes.add(impacto)
             cor_explosao = (255, 190, 80)
             if jogador.modelo == "titan":
                 cor_explosao = (255, 150, 60)
@@ -269,17 +341,18 @@ def run_game_session(
                     distancia = math.hypot(nave_inimiga.rect.centerx - especial.rect.centerx, nave_inimiga.rect.centery - especial.rect.centery)
                     if distancia <= especial.raio:
                         dano_nave = especial.dano_central if distancia <= especial.raio * 0.5 else especial.dano
-                        nave_inimiga.vida -= dano_nave
+                        aplicar_dano_inimigo(nave_inimiga, dano_nave)
                         explosao = Explosao(nave_inimiga.rect.centerx, nave_inimiga.rect.centery, cor=(255, 55, 55), raio_inicial=12)
                         todos_sprites.add(explosao)
                         explosoes.add(explosao)
                         if nave_inimiga.vida <= 0:
-                            nave_inimiga.kill()
-                            pontos += 18 + fase_atual * 4 + dano_nave
+                            pontos_base = (
+                                100 + fase_atual * 50
+                                if getattr(nave_inimiga, "eh_chefe", False)
+                                else 18 + fase_atual * 4 + dano_nave
+                            )
+                            registrar_derrota_inimigo(nave_inimiga, pontos_base)
                             jogador.aplicar_pontos_para_cura(18 + fase_atual * 4 + dano_nave)
-                            moedas += 2
-                            jogador.adicionar_energia(12)
-                            services.play_sound([260, 200], duracao=0.12, volume=0.25)
 
             elif getattr(especial, "tipo", None) == "aegis":
                 for nave_inimiga in list(especial.cooldowns_inimigos):
@@ -301,7 +374,7 @@ def run_game_session(
                         ):
                             continue
 
-                        nave_inimiga.vida -= especial.dano_inimigo
+                        aplicar_dano_inimigo(nave_inimiga, especial.dano_inimigo)
                         especial.cooldowns_inimigos[nave_inimiga] = especial.intervalo_dano
                         explosao = Explosao(
                             nave_inimiga.rect.centerx,
@@ -312,13 +385,17 @@ def run_game_session(
                         todos_sprites.add(explosao)
                         explosoes.add(explosao)
                         if nave_inimiga.vida <= 0:
-                            nave_inimiga.kill()
-                            pontos += 25 + fase_atual * 5
+                            pontos_base = (
+                                100 + fase_atual * 50
+                                if getattr(nave_inimiga, "eh_chefe", False)
+                                else 25 + fase_atual * 5
+                            )
+                            registrar_derrota_inimigo(
+                                nave_inimiga,
+                                pontos_base,
+                                cura=True,
+                            )
                             jogador.aplicar_pontos_para_cura(25 + fase_atual * 5)
-                            moedas += 2
-                            jogador.recuperar_vida(calcular_cura_inimigo_derrotado(fase_atual))
-                            jogador.adicionar_energia(12)
-                            services.play_sound([260, 200], duracao=0.12, volume=0.25)
 
             else:
                 for nave_inimiga in list(inimigos_frota):
@@ -330,7 +407,7 @@ def run_game_session(
                     ):
                         continue
 
-                    nave_inimiga.vida -= especial.dano_inimigo
+                    aplicar_dano_inimigo(nave_inimiga, especial.dano_inimigo)
                     explosao = Explosao(
                         nave_inimiga.rect.centerx,
                         nave_inimiga.rect.centery,
@@ -340,13 +417,17 @@ def run_game_session(
                     todos_sprites.add(explosao)
                     explosoes.add(explosao)
                     if nave_inimiga.vida <= 0:
-                        nave_inimiga.kill()
-                        pontos += 25 + fase_atual * 5
+                        pontos_base = (
+                            100 + fase_atual * 50
+                            if getattr(nave_inimiga, "eh_chefe", False)
+                            else 25 + fase_atual * 5
+                        )
+                        registrar_derrota_inimigo(
+                            nave_inimiga,
+                            pontos_base,
+                            cura=True,
+                        )
                         jogador.aplicar_pontos_para_cura(25 + fase_atual * 5)
-                        moedas += 2
-                        jogador.recuperar_vida(calcular_cura_inimigo_derrotado(fase_atual))
-                        jogador.adicionar_energia(12)
-                        services.play_sound([260, 200], duracao=0.12, volume=0.25)
 
         ataques_asteroides = [
             especial
@@ -374,25 +455,46 @@ def run_game_session(
         if modo_frota:
             for nave_inimiga in list(inimigos_frota):
                 if nave_inimiga.cooldown_tiro <= 0:
-                    tiro_inimigo = nave_inimiga.criar_tiro(jogador)
-                    if tiro_inimigo is not None:
-                        todos_sprites.add(tiro_inimigo)
-                        tiros_inimigos.add(tiro_inimigo)
+                    if getattr(nave_inimiga, "eh_chefe", False):
+                        novos_tiros = nave_inimiga.criar_tiros(jogador)
+                    else:
+                        tiro_inimigo = nave_inimiga.criar_tiro(jogador)
+                        novos_tiros = [tiro_inimigo] if tiro_inimigo is not None else []
+                    todos_sprites.add(novos_tiros)
+                    tiros_inimigos.add(novos_tiros)
 
             colisoes_frota = pygame.sprite.groupcollide(inimigos_frota, tiros, False, True)
-            for nave_inimiga in colisoes_frota:
-                nave_inimiga.vida -= 1
-                explosao = Explosao(nave_inimiga.rect.centerx, nave_inimiga.rect.centery, cor=(255, 90, 90), raio_inicial=12)
-                todos_sprites.add(explosao)
-                explosoes.add(explosao)
+            for nave_inimiga, tiros_que_atingiram in colisoes_frota.items():
+                aplicar_dano_inimigo(
+                    nave_inimiga,
+                    sum(tiro.dano_inimigo for tiro in tiros_que_atingiram),
+                )
+                for tiro in tiros_que_atingiram:
+                    impacto = Impacto(tiro.rect.centerx, tiro.rect.centery, "nave")
+                    todos_sprites.add(impacto)
+                    explosoes.add(impacto)
                 if nave_inimiga.vida <= 0:
-                    nave_inimiga.kill()
-                    pontos += 25 + fase_atual * 5
+                    explosao = Explosao(
+                        nave_inimiga.rect.centerx,
+                        nave_inimiga.rect.centery,
+                        cor=(255, 90, 90),
+                        raio_inicial=42 if getattr(nave_inimiga, "eh_chefe", False) else 16,
+                    )
+                    todos_sprites.add(explosao)
+                    explosoes.add(explosao)
+                    pontos_base = (
+                        100 + fase_atual * 50
+                        if getattr(nave_inimiga, "eh_chefe", False)
+                        else 25 + fase_atual * 5
+                    )
+                    registrar_derrota_inimigo(
+                        nave_inimiga,
+                        pontos_base,
+                        cura=True,
+                    )
                     jogador.aplicar_pontos_para_cura(25 + fase_atual * 5)
-                    moedas += 2
-                    jogador.recuperar_vida(calcular_cura_inimigo_derrotado(fase_atual))
-                    jogador.adicionar_energia(12)
-                    services.play_sound([260, 200], duracao=0.12, volume=0.25)
+                else:
+                    services.play_sound([760, 580], duracao=0.09, volume=0.18)
 
             if len(inimigos_frota) == 0 and pontos < meta_pontos:
                 nova_frota = gerar_frota_inimiga(fase_atual)
@@ -400,10 +502,20 @@ def run_game_session(
                     todos_sprites.add(nave_inimiga)
                     inimigos_frota.add(nave_inimiga)
 
+        if modo_frota and pontos >= meta_pontos and chefe is None:
+            chefe = ChefeFrota(largura // 2, 90, fase_atual)
+            todos_sprites.add(chefe)
+            inimigos_frota.add(chefe)
+            services.play_sound([150, 220, 180], duracao=0.45, volume=0.4)
+
         if jogador.modelo == "aegis" and not teclas[pygame.K_k] and jogador.aegis_ativo:
             jogador.aegis_ativo = False
 
-        if not modo_infinito and pontos >= meta_pontos:
+        if (
+            not modo_infinito
+            and pontos >= meta_pontos
+            and (not modo_frota or chefe_derrotado)
+        ):
             venceu = True
             rodando = False
 
@@ -413,7 +525,12 @@ def run_game_session(
 
         if colidiu_com_asteroide or (modo_frota and pygame.sprite.spritecollideany(jogador, inimigos_frota)) or tiros_jogador_colidindo:
             services.play_sound([100, 70], duracao=0.18, volume=0.28)
-            dano_aplicado = dano_asteroide if colidiu_com_asteroide else 20
+            dano_aplicado = _calcular_dano_colisao(
+                modo_jogo,
+                colidiu_com_asteroide,
+                dano_asteroide,
+                niveis_melhorias.get("defesa", 1),
+            )
             if jogador.perder_vida(dano_aplicado):
                 pygame.time.delay(500)
                 rodando = False
@@ -449,6 +566,10 @@ def run_game_session(
                 "modelo_nave": jogador.modelo,
                 "botao_pausa": botao_pausa,
                 "titan_restante": titan_restante,
+                "chefe_vida": chefe.vida if chefe is not None and chefe.alive() else None,
+                "chefe_vida_maxima": (
+                    chefe.vida_maxima if chefe is not None and chefe.alive() else None
+                ),
                 "notificacao_conquista": (
                     notificacao_conquista
                     if pygame.time.get_ticks() < notificacao_ate
@@ -460,4 +581,4 @@ def run_game_session(
     if venceu and not jogador.dano_sofrido:
         tentar_desbloquear("intocavel")
 
-    return pontos, moedas, venceu
+    return pontos, moedas, venceu, abandonada

@@ -2,7 +2,12 @@ import pygame
 import sys
 
 from config import AMARELO, AZUL_NEON, BRANCO, VERMELHO
-from game.screens_common import _centralizar, _desenhar_fundo, texto_com_borda
+from game.screens_common import (
+    _centralizar,
+    _desenhar_fundo,
+    animar_transicao,
+    texto_com_borda,
+)
 
 
 
@@ -18,6 +23,7 @@ def tela_boas_vindas(
 ):
     fonte_titulo, fonte_texto, fonte_hud = fontes
     rodando = True
+    animar_entrada = True
     while rodando:
         relogio.tick(60)
         _desenhar_fundo(tela, fundo)
@@ -35,6 +41,9 @@ def tela_boas_vindas(
         for fonte, texto, cor, y in mensagens:
             _centralizar(tela, texto_com_borda(fonte, texto, cor), y)
 
+        if animar_entrada:
+            animar_transicao(tela, relogio)
+            animar_entrada = False
         pygame.display.flip()
 
         for evento in pygame.event.get():
@@ -47,22 +56,30 @@ def tela_boas_vindas(
                 atualizar_tamanho_tela(evento)
             if evento.type == pygame.KEYDOWN:
                 if evento.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+                    animar_transicao(tela, relogio, entrada=False)
                     rodando = False
                 elif evento.key == pygame.K_c:
+                    animar_transicao(tela, relogio, entrada=False)
                     abrir_comandos()
+                    animar_entrada = True
                 elif evento.key == pygame.K_r:
+                    animar_transicao(tela, relogio, entrada=False)
                     abrir_ranking()
+                    animar_entrada = True
                 elif evento.key == pygame.K_a:
+                    animar_transicao(tela, relogio, entrada=False)
                     abrir_conquistas()
+                    animar_entrada = True
 
 def tela_ranking(tela, relogio, fontes, fundo, atualizar_tamanho_tela, listar_ranking):
     fonte_titulo, _, fonte_hud = fontes
     rodando = True
+    animar_entrada = True
     while rodando:
         relogio.tick(60)
         _desenhar_fundo(tela, fundo)
 
-        _centralizar(tela, texto_com_borda(fonte_titulo, "RANKING FINAL", AMARELO), 60)
+        _centralizar(tela, texto_com_borda(fonte_titulo, "RECORDES POR MODO E NAVE", AMARELO), 60)
         ranking = listar_ranking(10)
         painel = pygame.Surface((700, 420), pygame.SRCALPHA)
         painel.fill((15, 18, 28, 180))
@@ -88,6 +105,9 @@ def tela_ranking(tela, relogio, fontes, fundo, atualizar_tamanho_tela, listar_ra
             texto_com_borda(fonte_hud, "Pressione [ESC] ou [ENTER] para voltar", AZUL_NEON),
             520,
         )
+        if animar_entrada:
+            animar_transicao(tela, relogio)
+            animar_entrada = False
         pygame.display.flip()
 
         for evento in pygame.event.get():
@@ -103,11 +123,13 @@ def tela_ranking(tela, relogio, fontes, fundo, atualizar_tamanho_tela, listar_ra
                 pygame.K_KP_ENTER,
                 pygame.K_ESCAPE,
             ):
+                animar_transicao(tela, relogio, entrada=False)
                 rodando = False
 
 def tela_comandos(tela, relogio, fontes, fundo, atualizar_tamanho_tela):
     fonte_titulo, fonte_texto, fonte_hud = fontes
     rodando = True
+    animar_entrada = True
     while rodando:
         relogio.tick(60)
         _desenhar_fundo(tela, fundo)
@@ -130,6 +152,9 @@ def tela_comandos(tela, relogio, fontes, fundo, atualizar_tamanho_tela):
             texto_com_borda(fonte_hud, "Pressione [ESC] ou [ENTER] para voltar", AMARELO),
             500,
         )
+        if animar_entrada:
+            animar_transicao(tela, relogio)
+            animar_entrada = False
         pygame.display.flip()
 
         for evento in pygame.event.get():
@@ -145,21 +170,23 @@ def tela_comandos(tela, relogio, fontes, fundo, atualizar_tamanho_tela):
                 pygame.K_KP_ENTER,
                 pygame.K_ESCAPE,
             ):
+                animar_transicao(tela, relogio, entrada=False)
                 rodando = False
 
 def tela_selecao_modo(tela, relogio, fontes, fundo, atualizar_tamanho_tela):
     fonte_titulo, fonte_texto, fonte_hud = fontes
     opcoes = [
-        {"nome": "ASTEROIDES", "valor": "asteroides", "descricao": "Missão clássica contra meteoros e obstáculos."},
-        {"nome": "FROTA INIMIGA", "valor": "frota_inimiga", "descricao": "Modo de combate direto contra naves inimigas."},
-        {"nome": "INFINITO", "valor": "infinito", "descricao": "Sobreviva o máximo de tempo e marque a maior pontuação possível."},
+        {"nome": "ASTEROIDES", "valor": "asteroides", "descricao": "Fases e chefes"},
+        {"nome": "FROTA INIMIGA", "valor": "frota_inimiga", "descricao": "Batalha contra naves"},
+        {"nome": "INFINITO", "valor": "infinito", "descricao": "Sobreviva e pontue"},
     ]
     indice = 0
+    animar_entrada = True
     while True:
         relogio.tick(60)
         _desenhar_fundo(tela, fundo)
 
-        _centralizar(tela, texto_com_borda(fonte_titulo, "SELEÇÃO DE MODO", AZUL_NEON), 50)
+        _centralizar(tela, texto_com_borda(fonte_titulo, "ESCOLHA O MODO", AZUL_NEON), 70)
         for idx, opcao in enumerate(opcoes):
             offset = idx - (len(opcoes) - 1) / 2
             x = tela.get_width() // 2 + offset * 240
@@ -179,11 +206,14 @@ def tela_selecao_modo(tela, relogio, fontes, fundo, atualizar_tamanho_tela):
             tela,
             texto_com_borda(
                 fonte_hud,
-                "Use [← / →] ou [A / D] para escolher | [ENTER] para confirmar",
+                "← → / A D   •   ENTER escolher",
                 BRANCO,
             ),
             500,
         )
+        if animar_entrada:
+            animar_transicao(tela, relogio)
+            animar_entrada = False
         pygame.display.flip()
 
         for evento in pygame.event.get():
@@ -200,6 +230,7 @@ def tela_selecao_modo(tela, relogio, fontes, fundo, atualizar_tamanho_tela):
                 elif evento.key in (pygame.K_RIGHT, pygame.K_d):
                     indice = (indice + 1) % len(opcoes)
                 elif evento.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+                    animar_transicao(tela, relogio, entrada=False)
                     return opcoes[indice]["valor"]
 
 def tela_intro_fase(
@@ -228,9 +259,11 @@ def tela_intro_fase(
         4: (255, 120, 40),
     }
 
+    animar_entrada = True
     while True:
         tempo_decorrido = pygame.time.get_ticks() - inicio
         if tempo_decorrido >= duracao_intro:
+            animar_transicao(tela, relogio, entrada=False, duracao_ms=300)
             return
 
         relogio.tick(60)
@@ -259,6 +292,9 @@ def tela_intro_fase(
         _centralizar(tela, titulo, 150)
         _centralizar(tela, mensagem, 240)
         _centralizar(tela, contador, 305)
+        if animar_entrada:
+            animar_transicao(tela, relogio, duracao_ms=300)
+            animar_entrada = False
         pygame.display.flip()
 
         for evento in pygame.event.get():

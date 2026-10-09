@@ -9,6 +9,7 @@ from game.ui import (
     desenhar_tela_jogo,
     texto_com_borda,
 )
+from game.screens_common import animar_transicao
 
 
 def test_texto_com_borda_adiciona_contorno():
@@ -30,6 +31,31 @@ def test_fundo_e_redimensionado_para_area_de_tela():
     desenhar_fundo(tela, fundo)
 
     assert tela.get_at((3, 2))[:3] == (25, 50, 75)
+
+
+def test_transicao_fade_entrada_e_saida(monkeypatch):
+    tela = pygame.Surface((2, 2))
+    tela.fill((40, 80, 120))
+    capturas = []
+
+    class RelogioFalso:
+        def tick(self, fps):
+            return 1000 // fps
+
+    monkeypatch.setattr(
+        pygame.display,
+        "flip",
+        lambda: capturas.append(tela.get_at((0, 0))[:3]),
+    )
+
+    animar_transicao(tela, RelogioFalso(), duracao_ms=50)
+    assert capturas[0] == (0, 0, 0)
+    assert capturas[-1] == (40, 80, 120)
+
+    capturas.clear()
+    animar_transicao(tela, RelogioFalso(), entrada=False, duracao_ms=50)
+    assert capturas[0] == (40, 80, 120)
+    assert capturas[-1] == (0, 0, 0)
 
 
 def test_botao_de_pausa_muda_cor_quando_ativo():
@@ -94,6 +120,39 @@ def test_hud_pausado_omite_indicadores_de_combate(monkeypatch):
     assert "Continuar" in textos_renderizados
     assert "ESPECIAL [K]" not in textos_renderizados
     assert not any(texto.startswith("Titan:") for texto in textos_renderizados)
+
+
+def test_hud_mostra_barra_de_vida_do_chefe(monkeypatch):
+    pygame.font.init()
+    fonte = pygame.font.SysFont("Noto Sans", 16)
+    tela = pygame.Surface((800, 600))
+    textos_renderizados = []
+    texto_original = texto_com_borda
+
+    def registrar_texto(fonte_texto, texto, cor, *args, **kwargs):
+        textos_renderizados.append(texto)
+        return texto_original(fonte_texto, texto, cor, *args, **kwargs)
+
+    monkeypatch.setattr("game.ui.texto_com_borda", registrar_texto)
+    desenhar_hud_jogo(
+        tela,
+        fonte,
+        100,
+        150,
+        2,
+        4,
+        80,
+        100,
+        50,
+        1,
+        "frota_inimiga",
+        "vanguard",
+        pygame.Rect(680, 20, 100, 35),
+        chefe_vida=75,
+        chefe_vida_maxima=200,
+    )
+
+    assert "CHEFE" in textos_renderizados
 
 
 def test_hud_titan_mostra_prontidao_e_tempo_restante(monkeypatch):
@@ -179,12 +238,22 @@ def test_tela_conquistas_exibe_estado_e_fecha_com_escape(monkeypatch):
 
 
 def test_tela_selecao_modo_retorna_modo_confirmado(monkeypatch):
+    pygame.init()
     tela = pygame.Surface((800, 600))
     fontes = tuple(pygame.font.SysFont("Noto Sans", tamanho) for tamanho in (32, 16, 16))
+    textos = []
     eventos = [
         pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RIGHT),
         pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN),
     ]
+
+    texto_original = screens.texto_com_borda
+
+    def registrar_texto(fonte, texto, cor, *args, **kwargs):
+        textos.append(texto)
+        return texto_original(fonte, texto, cor, *args, **kwargs)
+
+    monkeypatch.setattr("game.screens_menu.texto_com_borda", registrar_texto)
     monkeypatch.setattr(pygame.event, "get", lambda: [eventos.pop(0)])
     monkeypatch.setattr(pygame.display, "flip", lambda: None)
 
@@ -193,6 +262,12 @@ def test_tela_selecao_modo_retorna_modo_confirmado(monkeypatch):
     )
 
     assert modo == "frota_inimiga"
+    assert "ESCOLHA O MODO" in textos
+    assert "Fases e chefes" in textos
+    assert "Batalha contra naves" in textos
+    assert "Sobreviva e pontue" in textos
+    assert "← → / A D   •   ENTER escolher" in textos
+    assert "Missão clássica contra meteoros e obstáculos." not in textos
 
 
 def test_tela_selecao_nave_retorna_a_nave_selecionada(monkeypatch):
@@ -227,7 +302,17 @@ def test_tela_melhorias_compra_e_persiste_upgrade(monkeypatch):
     dados = {
         "moedas": 100,
         "naves_desbloqueadas": ["Vanguard.png"],
-        "niveis_melhorias": {"velocidade": 1, "cadencia": 1, "especial": 1},
+        "niveis_melhorias": {
+            "velocidade": 1,
+            "cadencia": 1,
+            "especial": 1,
+            "dano": 1,
+            "defesa": 1,
+            "vida": 1,
+            "manobrabilidade": 1,
+            "recarga": 1,
+            "recompensa": 1,
+        },
     }
     salvos = []
     monkeypatch.setattr(pygame.event, "get", lambda: [eventos.pop(0)])
@@ -241,6 +326,174 @@ def test_tela_melhorias_compra_e_persiste_upgrade(monkeypatch):
     assert dados["moedas"] == 70
     assert dados["niveis_melhorias"]["velocidade"] == 2
     assert salvos == [dados]
+
+
+def test_tela_melhorias_compra_upgrade_de_dano(monkeypatch):
+    tela = pygame.Surface((800, 600))
+    fontes = tuple(pygame.font.SysFont("Noto Sans", tamanho) for tamanho in (32, 16, 16))
+    eventos = [
+        pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RIGHT),
+        pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RIGHT),
+        pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RIGHT),
+        pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN),
+        pygame.event.Event(pygame.KEYDOWN, key=pygame.K_SPACE),
+    ]
+    dados = {
+        "moedas": 100,
+        "naves_desbloqueadas": ["Vanguard.png"],
+        "niveis_melhorias": {
+            "velocidade": 1,
+            "cadencia": 1,
+            "especial": 1,
+            "dano": 1,
+            "defesa": 1,
+            "vida": 1,
+            "manobrabilidade": 1,
+            "recarga": 1,
+            "recompensa": 1,
+        },
+    }
+    salvos = []
+    monkeypatch.setattr(pygame.event, "get", lambda: [eventos.pop(0)])
+    monkeypatch.setattr(pygame.display, "flip", lambda: None)
+
+    screens.tela_melhorias(
+        dados, tela, pygame.time.Clock(), fontes, None, lambda evento: None,
+        lambda jogador: jogador, salvos.append, lambda nivel: 0.6,
+    )
+
+    assert dados["moedas"] == 50
+    assert dados["niveis_melhorias"]["dano"] == 2
+    assert salvos == [dados]
+
+
+def test_tela_melhorias_compra_upgrade_de_defesa(monkeypatch):
+    tela = pygame.Surface((800, 600))
+    fontes = tuple(pygame.font.SysFont("Noto Sans", tamanho) for tamanho in (32, 16, 16))
+    eventos = [
+        pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RIGHT),
+        pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RIGHT),
+        pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RIGHT),
+        pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RIGHT),
+        pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN),
+        pygame.event.Event(pygame.KEYDOWN, key=pygame.K_SPACE),
+    ]
+    dados = {
+        "moedas": 100,
+        "naves_desbloqueadas": ["Vanguard.png"],
+        "niveis_melhorias": {
+            "velocidade": 1,
+            "cadencia": 1,
+            "especial": 1,
+            "dano": 1,
+            "defesa": 1,
+            "vida": 1,
+            "manobrabilidade": 1,
+            "recarga": 1,
+            "recompensa": 1,
+        },
+    }
+    salvos = []
+    monkeypatch.setattr(pygame.event, "get", lambda: [eventos.pop(0)])
+    monkeypatch.setattr(pygame.display, "flip", lambda: None)
+
+    screens.tela_melhorias(
+        dados, tela, pygame.time.Clock(), fontes, None, lambda evento: None,
+        lambda jogador: jogador, salvos.append, lambda nivel: 0.6,
+    )
+
+    assert dados["moedas"] == 40
+    assert dados["niveis_melhorias"]["defesa"] == 2
+    assert salvos == [dados]
+
+
+def test_tela_melhorias_nao_cobra_defesa_no_nivel_maximo(monkeypatch):
+    tela = pygame.Surface((800, 600))
+    fontes = tuple(pygame.font.SysFont("Noto Sans", tamanho) for tamanho in (32, 16, 16))
+    eventos = [
+        pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RIGHT),
+        pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RIGHT),
+        pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RIGHT),
+        pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RIGHT),
+        pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN),
+        pygame.event.Event(pygame.KEYDOWN, key=pygame.K_SPACE),
+    ]
+    dados = {
+        "moedas": 1000,
+        "naves_desbloqueadas": ["Vanguard.png"],
+        "niveis_melhorias": {
+            "velocidade": 1,
+            "cadencia": 1,
+            "especial": 1,
+            "dano": 1,
+            "defesa": 5,
+            "vida": 1,
+            "manobrabilidade": 1,
+            "recarga": 1,
+            "recompensa": 1,
+        },
+    }
+    salvos = []
+    monkeypatch.setattr(pygame.event, "get", lambda: [eventos.pop(0)])
+    monkeypatch.setattr(pygame.display, "flip", lambda: None)
+
+    screens.tela_melhorias(
+        dados, tela, pygame.time.Clock(), fontes, None, lambda evento: None,
+        lambda jogador: jogador, salvos.append, lambda nivel: 0.6,
+    )
+
+    assert dados["moedas"] == 1000
+    assert dados["niveis_melhorias"]["defesa"] == 5
+    assert salvos == []
+
+
+def test_tela_melhorias_compra_as_quatro_novas_melhorias(monkeypatch):
+    pygame.init()
+    tela = pygame.Surface((800, 600))
+    fontes = tuple(pygame.font.SysFont("Noto Sans", tamanho) for tamanho in (32, 16, 16))
+    monkeypatch.setattr(pygame.display, "flip", lambda: None)
+    custos = {
+        "vida": 45,
+        "manobrabilidade": 35,
+        "recarga": 50,
+        "recompensa": 55,
+    }
+
+    for indice, (melhoria, custo) in enumerate(custos.items(), start=5):
+        eventos = [
+            *[
+                pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RIGHT)
+                for _ in range(indice)
+            ],
+            pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN),
+            pygame.event.Event(pygame.KEYDOWN, key=pygame.K_SPACE),
+        ]
+        dados = {
+            "moedas": 100,
+            "naves_desbloqueadas": ["Vanguard.png"],
+            "niveis_melhorias": {
+                "velocidade": 1,
+                "cadencia": 1,
+                "especial": 1,
+                "dano": 1,
+                "defesa": 1,
+                "vida": 1,
+                "manobrabilidade": 1,
+                "recarga": 1,
+                "recompensa": 1,
+            },
+        }
+        salvos = []
+        monkeypatch.setattr(pygame.event, "get", lambda: [eventos.pop(0)])
+
+        screens.tela_melhorias(
+            dados, tela, pygame.time.Clock(), fontes, None, lambda evento: None,
+            lambda jogador: jogador, salvos.append, lambda nivel: 0.6,
+        )
+
+        assert dados["moedas"] == 100 - custo
+        assert dados["niveis_melhorias"][melhoria] == 2
+        assert salvos == [dados]
 
 
 def test_tela_game_over_salva_pontuacao_e_retorna(monkeypatch):
@@ -306,6 +559,7 @@ def test_renderizador_de_pausa_desenha_overlay_e_textos(monkeypatch):
         "modo_jogo": "asteroides",
         "modelo_nave": "vanguard",
         "botao_pausa": pygame.Rect(680, 20, 100, 35),
+        "botao_abandonar": pygame.Rect(270, 370, 260, 44),
     }
     textos = []
     exibicoes = []
@@ -323,5 +577,6 @@ def test_renderizador_de_pausa_desenha_overlay_e_textos(monkeypatch):
 
     assert "PAUSADO" in textos
     assert "Pressione [P] ou clique no botão para continuar" in textos
+    assert "Abandonar partida" in textos
     assert tela.get_at((0, 0))[:3] == (10, 11, 20)
     assert exibicoes == [True]
