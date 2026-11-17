@@ -18,11 +18,34 @@ def test_normalizar_conquistas_filtra_ids_invalidos_e_remove_duplicatas():
 
 
 def test_desbloquear_conquista_e_idempotente():
-    dados = {"conquistas_desbloqueadas": []}
+    dados = {"moedas": 100, "conquistas_desbloqueadas": []}
 
     assert desbloquear_conquista(dados, "sobrevivente")
+    assert dados["moedas"] == 5100
     assert not desbloquear_conquista(dados, "sobrevivente")
+    assert dados["moedas"] == 5100
     assert dados["conquistas_desbloqueadas"] == ["sobrevivente"]
+
+
+def test_cada_conquista_paga_sua_recompensa_uma_vez():
+    dados = {"moedas": 0, "conquistas_desbloqueadas": []}
+
+    assert desbloquear_conquista(dados, "intocavel")
+    assert dados["moedas"] == 2500
+    assert not desbloquear_conquista(dados, "intocavel")
+    assert dados["moedas"] == 2500
+
+
+def test_conquista_antiga_recebe_recompensa_uma_unica_vez():
+    dados = {
+        "moedas": 100,
+        "conquistas_desbloqueadas": ["sobrevivente"],
+    }
+
+    assert desbloquear_conquista(dados, "sobrevivente")
+    assert dados["moedas"] == 5100
+    assert not desbloquear_conquista(dados, "sobrevivente")
+    assert dados["moedas"] == 5100
 
 
 def test_id_desconhecido_nao_e_aceito():
@@ -35,6 +58,7 @@ def test_lista_informa_conquistas_bloqueadas_e_desbloqueadas():
 
     assert [item["id"] for item in conquistas] == ["sobrevivente", "intocavel"]
     assert [item["desbloqueada"] for item in conquistas] == [False, True]
+    assert [item["recompensa"] for item in conquistas] == [5000, 2500]
 
 
 def test_save_antigo_recebe_lista_vazia_de_conquistas():
@@ -43,6 +67,7 @@ def test_save_antigo_recebe_lista_vazia_de_conquistas():
     )
 
     assert dados["conquistas_desbloqueadas"] == []
+    assert dados["recompensas_conquistas"] == []
 
 
 def test_dominio_filtra_ids_de_conquista_desconhecidos():

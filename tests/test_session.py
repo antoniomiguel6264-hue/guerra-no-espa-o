@@ -9,16 +9,19 @@ import pygame
 import game.session as game_session
 from game.entities.enemies import ChefeFrota
 from game.entities.projectiles import Tiro
+from game.entities.projectiles import TiroEspecialDreadnought
+from game.entities.projectiles import TiroEspecialHyperion
 from game.session import (
     SessionServices,
     _calcular_dano_colisao,
     _selecionar_fundo_sessao,
+    fase_tem_batalha_chefe,
 )
 from game.balance import calcular_bonus_moedas_inimigo
 
 
 def test_modo_infinito_usa_fundo_infinito_sem_mudar_fundos_de_fase():
-    fundos_fase = ("fase 1", "fase 2", "fase 3", "fase 4")
+    fundos_fase = ("habitat", "fase 1", "fase 2", "fase 3", "fase 4")
     fundo_infinito = "infinito"
 
     assert _selecionar_fundo_sessao(
@@ -28,8 +31,11 @@ def test_modo_infinito_usa_fundo_infinito_sem_mudar_fundos_de_fase():
         "asteroides", 1, fundos_fase, fundo_infinito
     ) == fundos_fase[0]
     assert _selecionar_fundo_sessao(
-        "frota_inimiga", 4, fundos_fase, fundo_infinito
-    ) == fundos_fase[3]
+        "frota_inimiga", 5, fundos_fase, fundo_infinito
+    ) == fundos_fase[4]
+    assert _selecionar_fundo_sessao(
+        "asteroides", 0, fundos_fase, fundo_infinito
+    ) == fundos_fase[0]
 
 
 def test_dano_de_contato_e_tiros_e_reduzido_apenas_no_modo_frota():
@@ -39,6 +45,16 @@ def test_dano_de_contato_e_tiros_e_reduzido_apenas_no_modo_frota():
     assert _calcular_dano_colisao("asteroides", False, 20) == 20
     assert _calcular_dano_colisao("infinito", False, 10) == 20
     assert _calcular_dano_colisao("frota_inimiga", True, 20) == 20
+
+
+def test_batalha_de_chefe_acontece_a_cada_duas_fases_da_frota():
+    assert [
+        fase
+        for fase in range(1, 11)
+        if fase_tem_batalha_chefe("frota_inimiga", fase)
+    ] == [2, 4, 6, 8, 10]
+    assert not fase_tem_batalha_chefe("asteroides", 2)
+    assert not fase_tem_batalha_chefe("infinito", 2)
 
 
 def test_recompensa_bonus_aplica_apenas_por_inimigo_derrotado():
@@ -113,7 +129,7 @@ def test_abandonar_pela_pausa_encerra_sessao_sem_vitoria(monkeypatch):
         get_screen=lambda: pygame.display.get_surface(),
         clock=RelogioFalso(),
         fonts=(None, None, None),
-        backgrounds=(None, None, None, None),
+        backgrounds=(None, None, None, None, None),
         infinite_background=None,
         resize_display=lambda evento: (800, 600),
         create_initial_asteroids=grupo_vazio,
@@ -216,7 +232,7 @@ def test_modo_frota_exige_derrotar_chefe_depois_da_meta(monkeypatch):
         get_screen=lambda: pygame.display.get_surface(),
         clock=RelogioFalso(),
         fonts=(None, None, None),
-        backgrounds=(None, None, None, None),
+        backgrounds=(None, None, None, None, None),
         infinite_background=None,
         resize_display=lambda evento: (800, 600),
         create_initial_asteroids=grupo_vazio,
@@ -229,9 +245,197 @@ def test_modo_frota_exige_derrotar_chefe_depois_da_meta(monkeypatch):
     resultado = game_session.run_game_session(
         "Vanguard.png",
         {"velocidade": 1, "cadencia": 1, "especial": 1},
+        fase_atual=2,
         modo_jogo="frota_inimiga",
         services=services,
     )
 
-    assert resultado == (180, 12, True, False)
+    assert resultado == (235, 12, True, False)
     assert NaveJogadorFalsa.dano_registrado == 3
+
+
+def test_especial_dreadnought_destroi_alvos_proximos_ao_impacto(monkeypatch):
+    pygame.init()
+    pygame.display.set_mode((800, 600))
+
+    class NaveJogadorFalsa(pygame.sprite.Sprite):
+        def __init__(self, *args):
+            super().__init__()
+            self.image = pygame.Surface((84, 84))
+            self.rect = self.image.get_rect(center=(400, 520))
+            self.modelo = "dreadnought"
+            self.vida = 100
+            self.vida_maxima = 100
+            self.energia_especial = 100
+            self.dano_sofrido = False
+
+        def update(self, *args):
+            pass
+
+        def disparar_especial(self):
+            self.energia_especial = 0
+            return True
+
+        def criar_tiro_especial(self):
+            tiro = TiroEspecialDreadnought(400, 400, 90)
+            tiro.vx = 0
+            tiro.vy = 0
+            return [tiro]
+
+        def aplicar_pontos_para_cura(self, pontos):
+            pass
+
+        def perder_vida(self, dano):
+            self.vida -= dano
+            return self.vida <= 0
+
+    class AsteroideFalso(pygame.sprite.Sprite):
+        def __init__(self, indice):
+            super().__init__()
+            self.image = pygame.Surface((20, 20))
+            self.rect = self.image.get_rect(center=(400 + indice, 400))
+            self.velocidadey = 1
+
+    class Teclas:
+        def __getitem__(self, tecla):
+            return False
+
+    class RelogioFalso:
+        def tick(self, fps):
+            return 16
+
+    alvos_originais = [AsteroideFalso(indice) for indice in range(40)]
+    asteroides = pygame.sprite.Group(*alvos_originais)
+    eventos = [pygame.event.Event(pygame.KEYDOWN, key=pygame.K_k)]
+    monkeypatch.setattr(game_session, "Nave", NaveJogadorFalsa)
+    monkeypatch.setattr(
+        game_session,
+        "desenhar_tela_jogo",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(pygame.event, "get", lambda: eventos)
+    monkeypatch.setattr(pygame.key, "get_pressed", lambda: Teclas())
+    monkeypatch.setattr(pygame.time, "delay", lambda *args: None)
+
+    services = SessionServices(
+        get_screen=lambda: pygame.display.get_surface(),
+        clock=RelogioFalso(),
+        fonts=(None, None, None),
+        backgrounds=(None,),
+        infinite_background=None,
+        resize_display=lambda evento: (800, 600),
+        create_initial_asteroids=lambda *args: asteroides,
+        create_infinite_asteroids=lambda *args, **kwargs: pygame.sprite.Group(),
+        asteroid_damage=lambda modo: 10,
+        save_player=lambda dados: None,
+        play_sound=lambda *args, **kwargs: None,
+    )
+
+    resultado = game_session.run_game_session(
+        "Dreadnought.png",
+        {"velocidade": 1, "cadencia": 1, "especial": 1},
+        services=services,
+    )
+
+    assert resultado == (400, 40, True, False)
+    assert all(not asteroide.alive() for asteroide in alvos_originais)
+
+
+def test_pulso_hyperion_destroi_asteroides_atingidos_pelo_anel(monkeypatch):
+    pygame.init()
+    pygame.display.set_mode((800, 600))
+
+    class NaveHyperionFalsa(pygame.sprite.Sprite):
+        def __init__(self, *args):
+            super().__init__()
+            self.image = pygame.Surface((84, 84))
+            self.rect = self.image.get_rect(center=(400, 520))
+            self.modelo = "hyperion"
+            self.vida = 100
+            self.vida_maxima = 100
+            self.energia_especial = 100
+            self.dano_sofrido = False
+
+        def update(self, *args):
+            pass
+
+        def disparar_especial(self):
+            self.energia_especial = 0
+            return True
+
+        def criar_tiro_especial(self):
+            return [TiroEspecialHyperion(*self.rect.center)]
+
+        def aplicar_pontos_para_cura(self, pontos):
+            pass
+
+        def perder_vida(self, dano):
+            self.vida -= dano
+            return self.vida <= 0
+
+    class AsteroideFalso(pygame.sprite.Sprite):
+        def __init__(self, x, y):
+            super().__init__()
+            self.image = pygame.Surface((20, 20))
+            self.rect = self.image.get_rect(center=(x, y))
+            self.velocidadey = 1
+
+        def update(self):
+            pass
+
+    class AsteroideSubstituto(pygame.sprite.Sprite):
+        def __init__(self, *args):
+            super().__init__()
+            self.image = pygame.Surface((20, 20))
+            self.rect = self.image.get_rect(center=(0, 0))
+            self.velocidadey = 1
+
+    class Teclas:
+        def __getitem__(self, tecla):
+            return False
+
+    class RelogioFalso:
+        def tick(self, fps):
+            return 16
+
+    alvos_originais = [
+        AsteroideFalso(400, 520)
+        for _ in range(30)
+    ]
+    asteroides = pygame.sprite.Group(*alvos_originais)
+    monkeypatch.setattr(game_session, "Nave", NaveHyperionFalsa)
+    monkeypatch.setattr(game_session, "Asteroide", AsteroideSubstituto)
+    monkeypatch.setattr(
+        game_session,
+        "desenhar_tela_jogo",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(
+        pygame.event,
+        "get",
+        lambda: [pygame.event.Event(pygame.KEYDOWN, key=pygame.K_k)],
+    )
+    monkeypatch.setattr(pygame.key, "get_pressed", lambda: Teclas())
+
+    services = SessionServices(
+        get_screen=lambda: pygame.display.get_surface(),
+        clock=RelogioFalso(),
+        fonts=(None, None, None),
+        backgrounds=(None,),
+        infinite_background=None,
+        resize_display=lambda evento: (800, 600),
+        create_initial_asteroids=lambda *args: asteroides,
+        create_infinite_asteroids=lambda *args, **kwargs: pygame.sprite.Group(),
+        asteroid_damage=lambda modo: 10,
+        save_player=lambda dados: None,
+        play_sound=lambda *args, **kwargs: None,
+    )
+
+    resultado = game_session.run_game_session(
+        "Hyperion.png",
+        {"velocidade": 1, "cadencia": 1, "especial": 1},
+        services=services,
+    )
+
+    assert resultado == (450, 60, True, False)
+    assert all(not asteroide.alive() for asteroide in alvos_originais)

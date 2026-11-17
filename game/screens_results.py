@@ -2,6 +2,7 @@ import pygame
 import sys
 
 from config import AMARELO, AZUL_NEON, BRANCO, VERMELHO
+from game.rewards import RECOMPENSAS_POR_ID
 from game.screens_common import (
     _centralizar,
     _desenhar_fundo,
@@ -128,3 +129,114 @@ def tela_game_over(
         atualizar_tamanho_tela, listar_ranking,
         modo_jogo, nave_escolhida,
     )
+
+
+def tela_pos_fase(
+    fase_atual,
+    pontos,
+    moedas,
+    recompensa_pendente,
+    tela,
+    relogio,
+    fontes,
+    fundo,
+    atualizar_tamanho_tela,
+):
+    _, fonte_texto, fonte_hud = fontes
+    opcoes = [("sair", "Sair")]
+    if fase_atual < 10:
+        opcoes.append(("avancar", f"Avançar para a fase {fase_atual + 1}"))
+    if recompensa_pendente is not None:
+        recompensa = RECOMPENSAS_POR_ID[recompensa_pendente]
+        opcoes.append(("resgatar", f"Resgatar recompensa: {recompensa['nome']}"))
+
+    indice = next(
+        (i for i, (acao, _) in enumerate(opcoes) if acao == "avancar"),
+        0,
+    )
+    animar_entrada = True
+    while True:
+        relogio.tick(60)
+        _desenhar_fundo(tela, fundo)
+        _centralizar(
+            tela,
+            texto_com_borda(fonte_hud, f"FASE {fase_atual} CONCLUÍDA", AMARELO),
+            110,
+        )
+        _centralizar(
+            tela,
+            texto_com_borda(fonte_texto, f"Pontuação da campanha: {pontos}", BRANCO),
+            155,
+        )
+        _centralizar(
+            tela,
+            texto_com_borda(fonte_texto, f"Moedas coletadas: {moedas}", BRANCO),
+            185,
+        )
+        if recompensa_pendente is not None:
+            recompensa = RECOMPENSAS_POR_ID[recompensa_pendente]
+            _centralizar(
+                tela,
+                texto_com_borda(
+                    fonte_hud,
+                    f"RECOMPENSA DISPONÍVEL: {recompensa['nome']}",
+                    AMARELO,
+                ),
+                235,
+            )
+
+        botoes = []
+        for posicao, (_, rotulo) in enumerate(opcoes):
+            rect = pygame.Rect(tela.get_width() // 2 - 200, 300 + posicao * 58, 400, 46)
+            selecionada = posicao == indice
+            pygame.draw.rect(
+                tela,
+                (25, 45, 65) if selecionada else (18, 25, 35),
+                rect,
+                border_radius=10,
+            )
+            pygame.draw.rect(
+                tela,
+                AMARELO if selecionada else AZUL_NEON,
+                rect,
+                2,
+                border_radius=10,
+            )
+            texto = texto_com_borda(fonte_texto, rotulo, BRANCO)
+            tela.blit(
+                texto,
+                (rect.centerx - texto.get_width() // 2, rect.centery - texto.get_height() // 2),
+            )
+            botoes.append(rect)
+
+        if animar_entrada:
+            animar_transicao(tela, relogio)
+            animar_entrada = False
+        pygame.display.flip()
+
+        for evento in pygame.event.get():
+            if evento.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            if evento.type == pygame.VIDEORESIZE or (
+                evento.type == pygame.KEYDOWN and evento.key == pygame.K_F11
+            ):
+                atualizar_tamanho_tela(evento)
+            if evento.type == pygame.MOUSEMOTION:
+                for posicao, rect in enumerate(botoes):
+                    if rect.collidepoint(evento.pos):
+                        indice = posicao
+                        break
+            if evento.type == pygame.MOUSEBUTTONDOWN and evento.button == 1:
+                for posicao, rect in enumerate(botoes):
+                    if rect.collidepoint(evento.pos):
+                        animar_transicao(tela, relogio, entrada=False)
+                        return opcoes[posicao][0]
+            if evento.type == pygame.KEYDOWN:
+                if evento.key in (pygame.K_UP, pygame.K_w):
+                    indice = (indice - 1) % len(opcoes)
+                elif evento.key in (pygame.K_DOWN, pygame.K_s):
+                    indice = (indice + 1) % len(opcoes)
+                elif evento.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+                    animar_transicao(tela, relogio, entrada=False)
+                    return opcoes[indice][0]

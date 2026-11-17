@@ -49,13 +49,12 @@ class SessionServices:
 def _selecionar_fundo_sessao(modo_jogo, fase_atual, backgrounds, infinite_background):
     if modo_jogo == "infinito":
         return infinite_background
-    if fase_atual == 1:
-        return backgrounds[0]
-    if fase_atual == 2:
-        return backgrounds[1]
-    if fase_atual == 3:
-        return backgrounds[2]
-    return backgrounds[3]
+    indice_fundo = min(max(fase_atual - 1, 0), len(backgrounds) - 1)
+    return backgrounds[indice_fundo]
+
+
+def fase_tem_batalha_chefe(modo_jogo, fase_atual):
+    return modo_jogo == "frota_inimiga" and fase_atual % 2 == 0
 
 
 def _calcular_dano_colisao(
@@ -81,7 +80,6 @@ def run_game_session(
     services: SessionServices,
 ):
     fonte_titulo, fonte_texto, fonte_hud = services.fonts
-    fundo_fase_1, fundo_fase_2, fundo_fase_3, fundo_fase_4 = services.backgrounds
     largura, altura = services.get_screen().get_size()
     todos_sprites = pygame.sprite.Group()
     tiros = pygame.sprite.Group()
@@ -91,6 +89,7 @@ def run_game_session(
     especiais = pygame.sprite.Group()
     explosoes = pygame.sprite.Group()
     modo_frota = modo_jogo == "frota_inimiga"
+    batalha_chefe = fase_tem_batalha_chefe(modo_jogo, fase_atual)
     modo_infinito = modo_jogo == "infinito"
 
     fundo_fase = _selecionar_fundo_sessao(
@@ -147,7 +146,11 @@ def run_game_session(
         nonlocal notificacao_conquista, notificacao_ate
         if dados_jogador is not None and desbloquear_conquista(dados_jogador, conquista_id):
             services.save_player(dados_jogador)
-            notificacao_conquista = CONQUISTAS_POR_ID[conquista_id]["nome"]
+            recompensa = CONQUISTAS_POR_ID[conquista_id]["recompensa"]
+            notificacao_conquista = (
+                f"{CONQUISTAS_POR_ID[conquista_id]['nome']} "
+                f"+{recompensa} moedas"
+            )
             notificacao_ate = pygame.time.get_ticks() + 4000
 
     def registrar_derrota_inimigo(inimigo, pontos_base, cura=False):
@@ -172,6 +175,59 @@ def run_game_session(
             jogador.recuperar_vida(calcular_cura_inimigo_derrotado(fase_atual))
         jogador.adicionar_energia(12)
         services.play_sound([260, 200], duracao=0.12, volume=0.25)
+
+    def detonar_especial_dreadnought(especial, x, y):
+        nonlocal pontos, moedas
+        especial.kill()
+        explosao = Explosao(
+            x,
+            y,
+            cor=(255, 115, 25),
+            raio_inicial=max(30, especial.raio_explosao // 2),
+        )
+        todos_sprites.add(explosao)
+        explosoes.add(explosao)
+
+        for asteroide in list(asteroides):
+            if not especial.atinge_alvo_na_explosao(asteroide, x, y):
+                continue
+            asteroide.kill()
+            pontos += 10
+            moedas += 1
+            jogador.aplicar_pontos_para_cura(10)
+            if pontos < meta_pontos:
+                novo_asteroide = Asteroide(fase_atual)
+                novo_asteroide.velocidadey = max(1, novo_asteroide.velocidadey - 2)
+                todos_sprites.add(novo_asteroide)
+                asteroides.add(novo_asteroide)
+
+        for nave_inimiga in list(inimigos_frota):
+            if not especial.atinge_alvo_na_explosao(nave_inimiga, x, y):
+                continue
+            distancia = math.hypot(
+                nave_inimiga.rect.centerx - x,
+                nave_inimiga.rect.centery - y,
+            )
+            dano = (
+                especial.dano_central
+                if distancia <= especial.raio_explosao * 0.5
+                else especial.dano_explosao
+            )
+            aplicar_dano_inimigo(nave_inimiga, dano)
+            if nave_inimiga.vida <= 0:
+                pontos_base = (
+                    100 + fase_atual * 50
+                    if getattr(nave_inimiga, "eh_chefe", False)
+                    else 25 + fase_atual * 5
+                )
+                registrar_derrota_inimigo(
+                    nave_inimiga,
+                    pontos_base,
+                    cura=True,
+                )
+                jogador.aplicar_pontos_para_cura(25 + fase_atual * 5)
+
+        services.play_sound([120, 180, 320, 520], duracao=0.3, volume=0.35)
     
     while rodando:
         delta_ms = services.clock.tick(FPS)
@@ -316,8 +372,66 @@ def run_game_session(
                 todos_sprites.add(novo_ast)
                 asteroides.add(novo_ast)
 
+        tiros_dreadnought = [
+            especial
+            for especial in list(especiais)
+            if getattr(especial, "tipo", None) == "dreadnought"
+        ]
+        for especial in tiros_dreadnought:
+            if not especial.alive():
+                continue
+            nave_atingida = pygame.sprite.spritecollideany(
+                especial,
+                inimigos_frota,
+            )
+            if nave_atingida is not None:
+                detonar_especial_dreadnought(
+                    especial,
+                    nave_atingida.rect.centerx,
+                    nave_atingida.rect.centery,
+                )
+                continue
+            asteroide_atingido = pygame.sprite.spritecollideany(
+                especial,
+                asteroides,
+            )
+            if asteroide_atingido is not None:
+                detonar_especial_dreadnought(
+                    especial,
+                    asteroide_atingido.rect.centerx,
+                    asteroide_atingido.rect.centery,
+                )
+
         for especial in list(especiais):
-            if getattr(especial, "tipo", None) == "titan":
+            if getattr(especial, "tipo", None) == "hyperion":
+                for ast in list(asteroides):
+                    if not especial.atinge_asteroide(ast):
+                        continue
+
+                    ast.kill()
+                    explosao = Explosao(
+                        ast.rect.centerx,
+                        ast.rect.centery,
+                        cor=(100, 210, 255),
+                        raio_inicial=18,
+                    )
+                    todos_sprites.add(explosao)
+                    explosoes.add(explosao)
+                    pontos += 15
+                    jogador.aplicar_pontos_para_cura(15)
+                    moedas += 2
+                    services.play_sound(
+                        [700, 980, 1250],
+                        duracao=0.16,
+                        volume=0.3,
+                    )
+                    if pontos < meta_pontos:
+                        novo_ast = Asteroide(fase_atual)
+                        novo_ast.velocidadey = max(1, novo_ast.velocidadey - 2)
+                        todos_sprites.add(novo_ast)
+                        asteroides.add(novo_ast)
+
+            elif getattr(especial, "tipo", None) in {"titan", "hellion"}:
                 for ast in list(asteroides):
                     distancia = math.hypot(ast.rect.centerx - especial.rect.centerx, ast.rect.centery - especial.rect.centery)
                     if distancia <= especial.raio:
@@ -340,6 +454,11 @@ def run_game_session(
                 for nave_inimiga in list(inimigos_frota):
                     distancia = math.hypot(nave_inimiga.rect.centerx - especial.rect.centerx, nave_inimiga.rect.centery - especial.rect.centery)
                     if distancia <= especial.raio:
+                        if (
+                            especial.tipo == "hellion"
+                            and not especial.registrar_tick_dano(nave_inimiga)
+                        ):
+                            continue
                         dano_nave = especial.dano_central if distancia <= especial.raio * 0.5 else especial.dano
                         aplicar_dano_inimigo(nave_inimiga, dano_nave)
                         explosao = Explosao(nave_inimiga.rect.centerx, nave_inimiga.rect.centery, cor=(255, 55, 55), raio_inicial=12)
@@ -432,7 +551,8 @@ def run_game_session(
         ataques_asteroides = [
             especial
             for especial in especiais
-            if especial.tipo != "titan" and (especial.tipo != "aegis" or especial.ativo)
+            if especial.tipo not in {"hyperion", "titan", "hellion", "dreadnought"}
+            and (especial.tipo != "aegis" or especial.ativo)
         ]
         colisoes_especial = pygame.sprite.groupcollide(asteroides, ataques_asteroides, True, False)
         for ast in colisoes_especial:
@@ -502,7 +622,7 @@ def run_game_session(
                     todos_sprites.add(nave_inimiga)
                     inimigos_frota.add(nave_inimiga)
 
-        if modo_frota and pontos >= meta_pontos and chefe is None:
+        if batalha_chefe and pontos >= meta_pontos and chefe is None:
             chefe = ChefeFrota(largura // 2, 90, fase_atual)
             todos_sprites.add(chefe)
             inimigos_frota.add(chefe)
@@ -514,7 +634,7 @@ def run_game_session(
         if (
             not modo_infinito
             and pontos >= meta_pontos
-            and (not modo_frota or chefe_derrotado)
+            and (not batalha_chefe or chefe_derrotado)
         ):
             venceu = True
             rodando = False
@@ -543,8 +663,20 @@ def run_game_session(
             tentar_desbloquear("sobrevivente")
 
         titan_restante = None
+        habilidade_especial = getattr(
+            jogador,
+            "habilidade_especial",
+            jogador.modelo,
+        )
         if jogador.modelo == "titan":
-            especial_ativa = next((especial for especial in especiais if getattr(especial, "tipo", None) == "titan"), None)
+            especial_ativa = next(
+                (
+                    especial
+                    for especial in especiais
+                    if getattr(especial, "tipo", None) in {"titan", "hellion"}
+                ),
+                None,
+            )
             if especial_ativa is not None:
                 titan_restante = max(0, especial_ativa.vida / FPS)
 
@@ -563,7 +695,18 @@ def run_game_session(
                 "energia_especial": jogador.energia_especial,
                 "inimigos_restantes": len(inimigos_frota),
                 "modo_jogo": modo_jogo,
-                "modelo_nave": jogador.modelo,
+                "modelo_nave": (
+                    "hellion"
+                    if habilidade_especial == "hellion"
+                    else jogador.modelo
+                ),
+                "rotulo_especial": (
+                    "Hellion Core"
+                    if habilidade_especial == "hellion"
+                    else "Asas de Trovão"
+                    if jogador.modelo == "hyperion"
+                    else "Titan"
+                ),
                 "botao_pausa": botao_pausa,
                 "titan_restante": titan_restante,
                 "chefe_vida": chefe.vida if chefe is not None and chefe.alive() else None,

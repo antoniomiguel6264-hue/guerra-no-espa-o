@@ -12,6 +12,58 @@ from game.screens_common import (
     animar_transicao,
     texto_com_borda,
 )
+from game.ship_art import ARQUIVOS_IMAGEM_NAVE, criar_imagem_nave
+
+
+NAVES_DISPONIVEIS = (
+    {"nome": "Vanguard", "arquivo": "Vanguard.png", "preco": 0, "descricao": "Tiro equilibrado (Gratuita)"},
+    {"nome": "Scout", "arquivo": "Scout.png", "preco": 50, "descricao": "Tiro rápido e preciso."},
+    {"nome": "Titan", "arquivo": "Titan.png", "preco": 100, "descricao": "Projétil pesado e blindagem reforçada."},
+    {"nome": "Phantom", "arquivo": "Phantom.png", "preco": 150, "descricao": "Rajada dupla de plasma."},
+    {"nome": "Aegis", "arquivo": "Aegis.png", "preco": 250, "descricao": "Projétil largo e escudo supremo."},
+    {
+        "nome": "Tempest", "arquivo": "Tempest.png",
+        "imagem": ARQUIVOS_IMAGEM_NAVE["tempest"], "preco": 350,
+        "descricao": "Disparos em leque e salva perfurante.",
+    },
+    {
+        "nome": "Nova", "arquivo": "Nova.png",
+        "imagem": ARQUIVOS_IMAGEM_NAVE["nova"], "preco": 450,
+        "descricao": "Canhão de plasma perfurante.",
+    },
+    {
+        "nome": "Wraith", "arquivo": "Wraith.png",
+        "imagem": ARQUIVOS_IMAGEM_NAVE["wraith"], "preco": 550,
+        "descricao": "Camuflagem temporária contra danos.",
+    },
+    {
+        "nome": "Dreadnought", "arquivo": "Dreadnought.png",
+        "imagem": ARQUIVOS_IMAGEM_NAVE["dreadnought"],
+        "preco": 12500, "descricao": "Projétil especial explosivo em área.",
+    },
+    {
+        "nome": "Vortex", "arquivo": "Vortex.png",
+        "imagem": ARQUIVOS_IMAGEM_NAVE["vortex"],
+        "preco": 15000, "descricao": "Rajada veloz e especial em espiral.",
+    },
+    {
+        "nome": "Seraph", "arquivo": "Seraph.png",
+        "imagem": ARQUIVOS_IMAGEM_NAVE["seraph"],
+        "preco": 20000, "descricao": "Canhões de luz e especial restaurador.",
+    },
+    {
+        "nome": "Hyperion", "arquivo": "Hyperion.png",
+        "imagem": ARQUIVOS_IMAGEM_NAVE["hyperion"], "preco": None,
+        "recompensa": "hyperion", "marco": 5,
+        "descricao": "Canhão pesado e pulso elétrico em anel.",
+    },
+    {
+        "nome": "Titan Hellion Core", "arquivo": "titan Hellion Core.png",
+        "imagem": ARQUIVOS_IMAGEM_NAVE["titan hellion core"], "preco": None,
+        "recompensa": "skin", "id_skin": "titan_hellion_core", "marco": 10,
+        "descricao": "Explosão de fogo contínua em área.",
+    },
+)
 
 
 
@@ -28,20 +80,22 @@ def tela_selecao_nave(
 ):
     fonte_titulo, fonte_texto, fonte_hud = fontes
     dados_jogador = validar_dados_jogador(dados_jogador)
-    naves_disponiveis = [
-        {"nome": "Vanguard", "arquivo": "Vanguard.png", "preco": 0, "descricao": "Tiro equilibrado (Gratuita)"},
-        {"nome": "Scout", "arquivo": "Scout.png", "preco": 50, "descricao": "Tiro rápido e preciso."},
-        {"nome": "Titan", "arquivo": "Titan.png", "preco": 100, "descricao": "Projétil pesado e blindagem reforçada."},
-        {"nome": "Phantom", "arquivo": "Phantom.png", "preco": 150, "descricao": "Rajada dupla de plasma."},
-        {"nome": "Aegis", "arquivo": "Aegis.png", "preco": 250, "descricao": "Projétil largo e escudo supremo."},
-    ]
+    naves_disponiveis = NAVES_DISPONIVEIS
     imagens_naves = {}
     for nave in naves_disponiveis:
+        arquivo_imagem = nave.get("imagem", nave["arquivo"])
         try:
-            imagem = pygame.image.load(resolver_caminho_arquivo(nave["arquivo"])).convert_alpha()
-        except pygame.error:
-            imagem = pygame.Surface((200, 200), pygame.SRCALPHA)
-            pygame.draw.rect(imagem, AZUL_NEON, (0, 0, 200, 200), border_radius=20)
+            imagem = pygame.image.load(resolver_caminho_arquivo(arquivo_imagem)).convert_alpha()
+        except (OSError, pygame.error):
+            modelo = nave["arquivo"].removesuffix(".png").lower()
+            if modelo in {
+                "tempest", "nova", "wraith",
+                "dreadnought", "vortex", "seraph",
+            }:
+                imagem = criar_imagem_nave(modelo)
+            else:
+                imagem = pygame.Surface((200, 200), pygame.SRCALPHA)
+                pygame.draw.rect(imagem, AZUL_NEON, (0, 0, 200, 200), border_radius=20)
         imagens_naves[nave["arquivo"]] = imagem
 
     indice_selecionado = 0
@@ -78,11 +132,14 @@ def tela_selecao_nave(
             tela.blit(nome, (x - nome.get_width() // 2, rect_imagem.bottom + 10))
 
             if offset == 0:
-                desbloqueada = (
-                    nave["arquivo"] in dados_jogador["naves_desbloqueadas"]
-                    or nave["preco"] == 0
+                desbloqueada = _nave_ou_skin_desbloqueada(nave, dados_jogador)
+                status = (
+                    "LIBERADA"
+                    if desbloqueada
+                    else f"RECOMPENSA DA FASE {nave['marco']}"
+                    if nave.get("recompensa")
+                    else f"PREÇO: {nave['preco']} 🪙"
                 )
-                status = "LIBERADA" if desbloqueada else f"PREÇO: {nave['preco']} 🪙"
                 descricao = texto_com_borda(fonte_texto, nave["descricao"], BRANCO)
                 status_texto = texto_com_borda(
                     fonte_hud, f"Status: {status}", AMARELO if desbloqueada else VERMELHO,
@@ -119,19 +176,27 @@ def tela_selecao_nave(
                     indice_selecionado = (indice_selecionado + 1) % len(naves_disponiveis)
                 elif evento.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
                     nave_atual = naves_disponiveis[indice_selecionado]
-                    ja_tem = (
-                        nave_atual["arquivo"] in dados_jogador["naves_desbloqueadas"]
-                        or nave_atual["preco"] == 0
-                    )
-                    if ja_tem:
+                    if _nave_ou_skin_desbloqueada(nave_atual, dados_jogador):
                         animar_transicao(tela, relogio, entrada=False)
                         return nave_atual["arquivo"]
+                    if nave_atual.get("recompensa"):
+                        continue
                     if dados_jogador["moedas"] >= nave_atual["preco"]:
                         dados_jogador["moedas"] -= nave_atual["preco"]
                         dados_jogador["naves_desbloqueadas"].append(nave_atual["arquivo"])
                         salvar_dados(dados_jogador)
                         animar_transicao(tela, relogio, entrada=False)
                         return nave_atual["arquivo"]
+
+
+def _nave_ou_skin_desbloqueada(nave, dados_jogador):
+    if nave.get("recompensa") == "skin":
+        return nave["id_skin"] in dados_jogador["skins_desbloqueadas"]
+    return (
+        nave["arquivo"] in dados_jogador["naves_desbloqueadas"]
+        or nave["preco"] == 0
+    )
+
 
 def tela_melhorias(
     dados_jogador,

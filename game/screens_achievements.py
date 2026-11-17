@@ -44,6 +44,14 @@ def tela_conquistas(
                 texto_com_borda(fonte_texto, conquista["descricao"], BRANCO),
                 (painel.x + 20, painel.y + 52),
             )
+            tela.blit(
+                texto_com_borda(
+                    fonte_texto,
+                    f"Recompensa: {conquista['recompensa']} moedas",
+                    AMARELO,
+                ),
+                (painel.right - 235, painel.y + 52),
+            )
 
         _centralizar(
             tela,

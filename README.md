@@ -1,6 +1,18 @@
 # guerra no espaço
  um jogo feito em pygame usando IA
 
+## Campanha
+
+A campanha tem 10 fases compartilhadas entre os modos Asteroides e Frota
+Inimiga. Concluir uma fase em qualquer um dos modos libera a fase seguinte
+para ambos. Ao vencer as fases 5 e 10, use **Resgatar recompensa** no menu
+pós-fase para liberar, respectivamente, a nave Hyperion e a skin Titan Hellion
+Core no hangar. A skin Hellion mantém as características da Titan, mas troca
+seu especial por uma explosão de fogo em área com dano contínuo. O especial da
+Dreadnought agora dispara um projétil que explode ao atingir um alvo e causa
+dano aos inimigos próximos. No modo Frota Inimiga, há batalhas contra chefes a
+cada duas fases: nas fases 2, 4, 6, 8 e 10.
+
 ## Atalho Linux com ícone
 
 O executável Linux não incorpora um ícone de arquivo. Para abrir o jogo pelo

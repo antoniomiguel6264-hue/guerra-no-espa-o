@@ -50,8 +50,19 @@ def test_salvar_dados_grava_dados_normalizados_atomicos(tmp_path, monkeypatch):
             "recarga": 1,
             "recompensa": 1,
         },
+        "fases_desbloqueadas": {
+            "asteroides": 1,
+            "frota_inimiga": 1,
+        },
+        "fases_concluidas_por_modo": {
+            "asteroides": 0,
+            "frota_inimiga": 0,
+        },
+        "skins_desbloqueadas": [],
+        "recompensas_pendentes": [],
+        "recompensas_resgatadas": [],
         "conquistas_desbloqueadas": [],
-        "conquistas_desbloqueadas": [],
+        "recompensas_conquistas": [],
     }
     assert dados == {
         "moedas": "25",
@@ -110,6 +121,25 @@ def test_normalizacao_de_save_preserva_ids_de_conquista_sem_conhecer_catalogo():
         "sobrevivente",
         "conquista_futura",
     ]
+
+
+def test_normalizacao_de_fases_desbloqueadas_limita_e_corrige_valores():
+    dados = salvamento.normalizar_dados_jogador(
+        {"fases_desbloqueadas": {"asteroides": "3", "frota_inimiga": 8}}
+    )
+
+    assert dados["fases_desbloqueadas"] == {
+        "asteroides": 8,
+        "frota_inimiga": 8,
+    }
+
+
+def test_normalizacao_de_save_filtra_recompensas_invalidas_e_duplicadas():
+    dados = salvamento.normalizar_dados_jogador(
+        {"recompensas_conquistas": ["sobrevivente", None, "sobrevivente", []]}
+    )
+
+    assert dados["recompensas_conquistas"] == ["sobrevivente"]
 
 
 def test_ranking_fecha_conexao_e_salva_no_banco_de_teste(tmp_path, monkeypatch):

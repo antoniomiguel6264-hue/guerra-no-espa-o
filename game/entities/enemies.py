@@ -5,6 +5,7 @@ import config
 import pygame
 
 from game.entities.common import resolver_caminho_arquivo
+from game.display import multiplicador_tamanho_em_jogo
 from game.entities.projectiles import TiroInimigo
 
 
@@ -13,7 +14,11 @@ class NaveInimiga(pygame.sprite.Sprite):
         super().__init__()
         self.fase = fase_atual
         self.vida = 3 + fase_atual
-        self.tamanho = 42 + fase_atual * 4
+        self.tamanho = round(
+            (42 + fase_atual * 4)
+            * 1.2
+            * multiplicador_tamanho_em_jogo()
+        )
         self.cooldown_tiro = random.randint(70, 120)
 
         self.image_original = None
@@ -72,7 +77,7 @@ class ChefeFrota(pygame.sprite.Sprite):
     def __init__(self, x, y, fase_atual=1):
         super().__init__()
         self.fase = fase_atual
-        self.vida_maxima = 120 + fase_atual * 40
+        self.vida_maxima = 180 + fase_atual * 60
         self.vida = self.vida_maxima
         self.cooldown_tiro = 90
         self.padrao_ataque = 0
@@ -98,7 +103,11 @@ class ChefeFrota(pygame.sprite.Sprite):
             except (OSError, pygame.error):
                 continue
 
-            escala = min(180 / imagem.get_width(), 120 / imagem.get_height())
+            multiplicador = 1.2 * multiplicador_tamanho_em_jogo()
+            escala = min(
+                180 * multiplicador / imagem.get_width(),
+                120 * multiplicador / imagem.get_height(),
+            )
             tamanho = (
                 max(1, round(imagem.get_width() * escala)),
                 max(1, round(imagem.get_height() * escala)),
@@ -141,13 +150,13 @@ class ChefeFrota(pygame.sprite.Sprite):
         angulo_alvo = math.degrees(math.atan2(-dy, dx))
         if self.padrao_ataque == 0:
             angulos = (angulo_alvo - 18, angulo_alvo, angulo_alvo + 18)
-            velocidade = 5
+            velocidade = 6
         else:
             angulos = (angulo_alvo - 6, angulo_alvo, angulo_alvo + 6)
-            velocidade = 7
+            velocidade = 8
 
         self.padrao_ataque = 1 - self.padrao_ataque
-        self.cooldown_tiro = 85 if velocidade == 5 else 65
+        self.cooldown_tiro = 65 if velocidade == 6 else 48
         return [
             TiroInimigo(
                 self.rect.centerx,

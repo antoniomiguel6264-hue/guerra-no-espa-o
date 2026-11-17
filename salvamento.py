@@ -6,6 +6,8 @@ import tempfile
 from contextlib import closing
 from datetime import datetime
 
+from game.rewards import MAX_FASES_CAMPANHA, RECOMPENSAS_POR_MARCO
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ARQUIVO_DADOS = os.path.join(BASE_DIR, "dados_jogador.json")
 ARQUIVO_RANKING = os.path.join(BASE_DIR, "ranking.db")
@@ -26,13 +28,26 @@ def normalizar_dados_jogador(dados):
             "recarga": 1,
             "recompensa": 1,
         },
+        "fases_desbloqueadas": {
+            "asteroides": 1,
+            "frota_inimiga": 1,
+        },
+        "fases_concluidas_por_modo": {
+            "asteroides": 0,
+            "frota_inimiga": 0,
+        },
+        "skins_desbloqueadas": [],
+        "recompensas_pendentes": [],
+        "recompensas_resgatadas": [],
         "conquistas_desbloqueadas": [],
+        "recompensas_conquistas": [],
     }
 
     if not isinstance(dados, dict):
         dados = {}
     else:
         dados = copy.deepcopy(dados)
+    possui_progresso_detalhado = "fases_concluidas_por_modo" in dados
 
     for chave, valor_padrao in dados_padrao.items():
         if chave not in dados:
@@ -66,10 +81,76 @@ def normalizar_dados_jogador(dados):
         niveis[nome_melhoria] = max(1, int(nivel))
 
     dados["niveis_melhorias"] = niveis
+    fases_desbloqueadas = dados.get("fases_desbloqueadas", {})
+    if not isinstance(fases_desbloqueadas, dict):
+        fases_desbloqueadas = {}
+    fases_normalizadas = {}
+    for modo in ("asteroides", "frota_inimiga"):
+        try:
+            fase = int(fases_desbloqueadas.get(modo, 1))
+        except (TypeError, ValueError):
+            fase = 1
+        fases_normalizadas[modo] = min(MAX_FASES_CAMPANHA, max(1, fase))
+    dados["fases_desbloqueadas"] = fases_normalizadas
+
+    progresso_salvo = dados.get("fases_concluidas_por_modo", {})
+    if not isinstance(progresso_salvo, dict):
+        progresso_salvo = {}
+    progresso_normalizado = {}
+    for modo in ("asteroides", "frota_inimiga"):
+        progresso_padrao = fases_normalizadas[modo] - 1
+        try:
+            fases_concluidas = int(
+                progresso_salvo.get(modo, progresso_padrao)
+                if possui_progresso_detalhado
+                else progresso_padrao
+            )
+        except (TypeError, ValueError):
+            fases_concluidas = progresso_padrao
+        progresso_normalizado[modo] = min(
+            MAX_FASES_CAMPANHA,
+            max(0, fases_concluidas),
+        )
+    progresso_global = max(progresso_normalizado.values())
+    for modo in fases_normalizadas:
+        fases_normalizadas[modo] = max(
+            fases_normalizadas[modo],
+            min(MAX_FASES_CAMPANHA, progresso_global + 1),
+        )
+    dados["fases_concluidas_por_modo"] = progresso_normalizado
+
+    for chave in (
+        "skins_desbloqueadas",
+        "recompensas_pendentes",
+        "recompensas_resgatadas",
+    ):
+        valores = dados.get(chave, [])
+        if not isinstance(valores, list):
+            valores = []
+        dados[chave] = list(
+            dict.fromkeys(valor for valor in valores if isinstance(valor, str))
+        )
+    for marco, recompensa in RECOMPENSAS_POR_MARCO.items():
+        recompensa_id = recompensa["id"]
+        if (
+            progresso_global >= marco
+            and recompensa_id not in dados["recompensas_pendentes"]
+            and recompensa_id not in dados["recompensas_resgatadas"]
+        ):
+            dados["recompensas_pendentes"].append(recompensa_id)
     conquistas = dados.get("conquistas_desbloqueadas", [])
     if not isinstance(conquistas, list):
         conquistas = []
     dados["conquistas_desbloqueadas"] = conquistas
+    recompensas_conquistas = dados.get("recompensas_conquistas", [])
+    if not isinstance(recompensas_conquistas, list):
+        recompensas_conquistas = []
+    recompensas_conquistas = [
+        recompensa
+        for recompensa in recompensas_conquistas
+        if isinstance(recompensa, str)
+    ]
+    dados["recompensas_conquistas"] = list(dict.fromkeys(recompensas_conquistas))
     return dados
 
 
@@ -89,6 +170,7 @@ def carregar_dados():
             "recompensa": 1,
         },
         "conquistas_desbloqueadas": [],
+        "recompensas_conquistas": [],
     }
     
     if os.path.exists(ARQUIVO_DADOS):

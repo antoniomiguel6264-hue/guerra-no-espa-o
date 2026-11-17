@@ -7,6 +7,8 @@ import pygame
 import config
 from audio import iniciar_audio
 from game.display import DisplayMode
+from game.habitats import HABITATS_POR_NAVE
+from game.rewards import MAX_FASES_CAMPANHA
 
 
 @dataclass(frozen=True)
@@ -17,13 +19,10 @@ class GameResources:
     fontes: tuple[pygame.font.Font, pygame.font.Font, pygame.font.Font]
     fundo_img: pygame.Surface | None
     fundo_infinito: pygame.Surface | None
-    fundos_fase: tuple[
-        pygame.Surface | None,
-        pygame.Surface | None,
-        pygame.Surface | None,
-        pygame.Surface | None,
-    ]
+    fundos_fase: tuple[pygame.Surface | None, ...]
+    fundos_habitat: dict[str, pygame.Surface | None]
     fundo_selecao: pygame.Surface | None
+    fundo_caminhos: pygame.Surface | None
     fundo_fim: pygame.Surface | None
 
 
@@ -80,10 +79,23 @@ def criar_recursos_jogo(
     )
     fundos_fase = tuple(
         _carregar_fundo(f"fase{fase}.jpg", resolver_caminho_arquivo, tamanho_tela)
-        for fase in range(1, 5)
+        for fase in range(1, MAX_FASES_CAMPANHA)
     )
+    fundos_habitat = {
+        habitat["fundo"]: _carregar_fundo(
+            habitat["fundo"],
+            resolver_caminho_arquivo,
+            tamanho_tela,
+        )
+        for habitat in HABITATS_POR_NAVE.values()
+    }
     fundo_selecao = _carregar_fundo(
         "tela preta.jpg",
+        resolver_caminho_arquivo,
+        tamanho_tela,
+    )
+    fundo_caminhos = _carregar_fundo(
+        "caminhos.jpg",
         resolver_caminho_arquivo,
         tamanho_tela,
     )
@@ -101,6 +113,8 @@ def criar_recursos_jogo(
         fundo_img=fundo_img,
         fundo_infinito=fundo_infinito,
         fundos_fase=fundos_fase,
+        fundos_habitat=fundos_habitat,
         fundo_selecao=fundo_selecao,
+        fundo_caminhos=fundo_caminhos,
         fundo_fim=fundo_fim,
     )

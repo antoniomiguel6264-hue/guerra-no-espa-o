@@ -1,6 +1,16 @@
 import pygame
 
 
+def multiplicador_tamanho_em_jogo():
+    if not pygame.display.get_init():
+        return 1.0
+
+    tela = pygame.display.get_surface()
+    if tela is not None and tela.get_flags() & pygame.FULLSCREEN:
+        return 1.35
+    return 1.0
+
+
 class DisplayMode:
     def __init__(self, surface):
         self.surface = surface

@@ -13,7 +13,11 @@ from game.entities.projectiles import (
     Tiro,
     TiroEspecial,
     TiroEspecialAegis,
+    TiroEspecialDreadnought,
+    TiroEspecialHellion,
+    TiroEspecialHyperion,
     TiroEspecialLaser,
+    TiroEspecialNova,
     TiroEspecialTitan,
     TiroInimigo,
 )

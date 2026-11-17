@@ -122,6 +122,46 @@ class TiroEspecialLaser(TiroEspecial):
             self.kill()
 
 
+class TiroEspecialNova(TiroEspecial):
+    def __init__(self, x, y, angulo, nivel=1):
+        super().__init__(x, y, angulo, tipo="nova", cor=(255, 145, 65), velocidade=11)
+        self.nivel = max(1, nivel)
+        self.image_original = pygame.Surface((30, 48), pygame.SRCALPHA)
+        pygame.draw.ellipse(self.image_original, (255, 105, 45, 130), (2, 2, 26, 44))
+        pygame.draw.ellipse(self.image_original, (255, 200, 100), (7, 6, 16, 36))
+        pygame.draw.ellipse(self.image_original, (255, 250, 200), (11, 12, 8, 22))
+        self.image = pygame.transform.rotate(self.image_original, self.angulo - 90)
+        self.rect = self.image.get_rect(center=(x, y))
+        self.dano_inimigo = 3 + self.nivel - 1
+        self.limite_alvos = min(8, 4 + self.nivel - 1)
+
+
+class TiroEspecialDreadnought(TiroEspecial):
+    def __init__(self, x, y, angulo, nivel=1):
+        super().__init__(
+            x,
+            y,
+            angulo,
+            tipo="dreadnought",
+            cor=(255, 100, 25),
+            velocidade=12,
+        )
+        self.nivel = max(1, nivel)
+        self.raio_explosao = min(150, 95 + (self.nivel - 1) * 12)
+        self.dano_explosao = 8 + (self.nivel - 1) * 2
+        self.dano_central = 12 + (self.nivel - 1) * 3
+        self.image_original = pygame.Surface((30, 38), pygame.SRCALPHA)
+        pygame.draw.ellipse(self.image_original, (255, 80, 15, 100), (0, 0, 30, 38))
+        pygame.draw.ellipse(self.image_original, (255, 150, 35), (5, 4, 20, 30))
+        pygame.draw.ellipse(self.image_original, (255, 235, 130), (10, 10, 10, 17))
+        self.image = pygame.transform.rotate(self.image_original, self.angulo - 90)
+        self.rect = self.image.get_rect(center=(x, y))
+
+    def atinge_alvo_na_explosao(self, alvo, x, y):
+        distancia = math.hypot(alvo.rect.centerx - x, alvo.rect.centery - y)
+        return distancia <= self.raio_explosao
+
+
 class TiroEspecialTitan(TiroEspecial):
     def __init__(self, x, y, duracao=36, nivel=1):
         super().__init__(x, y, 0, tipo="titan", cor=(255, 55, 55), velocidade=0)
@@ -181,6 +221,189 @@ class TiroEspecialTitan(TiroEspecial):
         self.vida -= 1
         if self.vida <= 0:
             self.kill()
+
+
+class TiroEspecialHyperion(TiroEspecial):
+    def __init__(self, x, y, nivel=1):
+        super().__init__(x, y, 0, tipo="hyperion", velocidade=0)
+        self.nivel = max(1, nivel)
+        self.raio_maximo = min(300, 180 + (self.nivel - 1) * 30)
+        self.raio = 0
+        self.raio_anterior = 0
+        self.vida = 20
+        self.vida_total = self.vida
+        self.pulso = 0
+        self.atualizar_visual()
+
+    def atinge_asteroide(self, asteroide):
+        distancia = math.hypot(
+            asteroide.rect.centerx - self.rect.centerx,
+            asteroide.rect.centery - self.rect.centery,
+        )
+        raio_asteroide = math.hypot(
+            asteroide.rect.width / 2,
+            asteroide.rect.height / 2,
+        )
+        return (
+            distancia <= self.raio + raio_asteroide
+            and distancia + raio_asteroide >= self.raio_anterior
+        )
+
+    def atualizar_visual(self):
+        margem = 16
+        tamanho = self.raio_maximo * 2 + margem * 2
+        imagem = pygame.Surface((tamanho, tamanho), pygame.SRCALPHA)
+        centro = (tamanho // 2, tamanho // 2)
+
+        if self.raio > 0:
+            pontos_anel = []
+            for indice in range(49):
+                angulo = math.tau * indice / 48
+                variacao = math.sin(angulo * 11 + self.pulso) * 4
+                raio = self.raio + variacao
+                pontos_anel.append((
+                    round(centro[0] + math.cos(angulo) * raio),
+                    round(centro[1] + math.sin(angulo) * raio),
+                ))
+
+            pygame.draw.lines(imagem, (55, 175, 255, 150), True, pontos_anel, 9)
+            pygame.draw.lines(imagem, (135, 235, 255, 245), True, pontos_anel, 3)
+
+            for indice in range(12):
+                angulo = math.tau * indice / 12 + self.pulso * 0.04
+                direcao = pygame.Vector2(math.cos(angulo), math.sin(angulo))
+                inicio = pygame.Vector2(centro) + direcao * (self.raio - 9)
+                fim = pygame.Vector2(centro) + direcao * (self.raio + 12)
+                desvio = pygame.Vector2(-direcao.y, direcao.x) * (
+                    4 if indice % 2 else -4
+                )
+                pygame.draw.line(
+                    imagem,
+                    (205, 250, 255, 245),
+                    inicio,
+                    (inicio + fim) / 2 + desvio,
+                    3,
+                )
+                pygame.draw.line(
+                    imagem,
+                    (205, 250, 255, 245),
+                    (inicio + fim) / 2 + desvio,
+                    fim,
+                    3,
+                )
+
+        self.image = imagem
+        self.rect = self.image.get_rect(
+            center=(self.rect.centerx, self.rect.centery)
+        )
+
+    def update(self):
+        if self.vida <= 0:
+            self.kill()
+            return
+
+        self.raio_anterior = self.raio
+        self.vida -= 1
+        progresso = 1 - self.vida / self.vida_total
+        self.raio = round(self.raio_maximo * progresso)
+        self.pulso += 1
+        self.atualizar_visual()
+
+
+class TiroEspecialHellion(TiroEspecialTitan):
+    def __init__(self, x, y, duracao=60, nivel=1):
+        super().__init__(x, y, duracao=duracao, nivel=nivel)
+        self.tipo = "hellion"
+        self.raio = math.ceil(min(100, 70 + (self.nivel - 1) * 8) * 1.5)
+        self.dano = 8 + max(0, self.nivel - 1)
+        self.dano_central = 12 + max(0, self.nivel - 1) * 2
+        self.cooldowns_inimigos = {}
+        self.atualizar_visual()
+
+    def registrar_tick_dano(self, inimigo):
+        if self.cooldowns_inimigos.get(inimigo, 0) > 0:
+            return False
+        self.cooldowns_inimigos[inimigo] = 12
+        return True
+
+    def update(self):
+        super().update()
+        self.cooldowns_inimigos = {
+            inimigo: cooldown - 1
+            for inimigo, cooldown in self.cooldowns_inimigos.items()
+            if inimigo.alive() and cooldown > 1
+        }
+
+    def atualizar_visual(self):
+        tamanho = self.raio * 2 + 4
+        imagem = pygame.Surface((tamanho, tamanho), pygame.SRCALPHA)
+        centro = (tamanho // 2, tamanho // 2)
+        brilho = 0.5 + 0.5 * math.sin(self.pulso)
+        fim = min(1.0, self.efeito_fim)
+
+        pygame.draw.circle(
+            imagem,
+            (255, 70, 10, 42),
+            centro,
+            min(self.raio, int(self.raio * (0.85 + brilho * 0.08))),
+        )
+        for indice, angulo in enumerate(range(0, 360, 30)):
+            rad = math.radians(angulo + self.pulso * 28)
+            raio_externo = self.raio - 5 + int(8 * math.sin(self.pulso + indice))
+            raio_interno = int(self.raio * 0.48)
+            ponta = (
+                centro[0] + int(math.cos(rad) * raio_externo),
+                centro[1] + int(math.sin(rad) * raio_externo),
+            )
+            base1 = (
+                centro[0] + int(math.cos(rad - 0.18) * raio_interno),
+                centro[1] + int(math.sin(rad - 0.18) * raio_interno),
+            )
+            base2 = (
+                centro[0] + int(math.cos(rad + 0.18) * raio_interno),
+                centro[1] + int(math.sin(rad + 0.18) * raio_interno),
+            )
+            pygame.draw.polygon(
+                imagem,
+                (255, 115, 20, 125 + int(55 * brilho)),
+                (base1, ponta, base2),
+            )
+
+        pygame.draw.circle(
+            imagem,
+            (255, 125, 20, 130),
+            centro,
+            int(self.raio * (0.68 + brilho * 0.08)),
+            5,
+        )
+        pygame.draw.circle(
+            imagem,
+            (255, 205, 70, 180),
+            centro,
+            int(self.raio * 0.36),
+            4,
+        )
+        pygame.draw.circle(
+            imagem,
+            (255, 245, 175, 210),
+            centro,
+            max(12, int(self.raio * 0.16)),
+        )
+        if fim > 0:
+            pygame.draw.circle(
+                imagem,
+                (255, 190, 70, int(100 * (1.0 - fim))),
+                centro,
+                int(self.raio * (0.5 + fim * 0.45)),
+                4,
+            )
+
+        self.image = imagem
+        self.rect = (
+            self.image.get_rect(center=(self.rect.centerx, self.rect.centery))
+            if hasattr(self, "rect")
+            else self.image.get_rect()
+        )
 
 
 class TiroEspecialAegis(TiroEspecial):

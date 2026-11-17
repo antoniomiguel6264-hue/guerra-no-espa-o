@@ -58,6 +58,158 @@ def test_transicao_fade_entrada_e_saida(monkeypatch):
     assert capturas[-1] == (0, 0, 0)
 
 
+def test_trilha_de_fases_inicia_fase_desbloqueada(monkeypatch):
+    pygame.init()
+    tela = pygame.Surface((800, 600))
+    fontes = tuple(pygame.font.SysFont("Noto Sans", tamanho) for tamanho in (32, 16, 16))
+    eventos = [
+        pygame.event.Event(pygame.KEYDOWN, key=pygame.K_DOWN),
+        pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN),
+    ]
+    monkeypatch.setattr("game.screens_menu._desenhar_fundo", lambda *args: None)
+    monkeypatch.setattr("game.screens_menu.animar_transicao", lambda *args, **kwargs: None)
+    monkeypatch.setattr(pygame.event, "get", lambda: eventos)
+    monkeypatch.setattr(pygame.display, "flip", lambda: None)
+
+    fase = screens.tela_selecao_fase(
+        "asteroides", {"asteroides": 2}, tela, pygame.time.Clock(), fontes,
+        None, lambda evento: None,
+    )
+
+    assert fase == 2
+
+
+def test_trilha_de_fases_nao_inicia_fase_bloqueada(monkeypatch):
+    pygame.init()
+    tela = pygame.Surface((800, 600))
+    fontes = tuple(pygame.font.SysFont("Noto Sans", tamanho) for tamanho in (32, 16, 16))
+    eventos = [
+        pygame.event.Event(pygame.KEYDOWN, key=pygame.K_DOWN),
+        pygame.event.Event(pygame.KEYDOWN, key=pygame.K_DOWN),
+        pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN),
+        pygame.event.Event(pygame.KEYDOWN, key=pygame.K_ESCAPE),
+    ]
+    monkeypatch.setattr("game.screens_menu._desenhar_fundo", lambda *args: None)
+    monkeypatch.setattr("game.screens_menu.animar_transicao", lambda *args, **kwargs: None)
+    monkeypatch.setattr(pygame.event, "get", lambda: eventos)
+    monkeypatch.setattr(pygame.display, "flip", lambda: None)
+
+    fase = screens.tela_selecao_fase(
+        "frota_inimiga", {"frota_inimiga": 1}, tela, pygame.time.Clock(), fontes,
+        None, lambda evento: None,
+    )
+
+    assert fase is None
+
+
+def test_trilha_de_fases_permite_iniciar_quinta_fase_desbloqueada(monkeypatch):
+    pygame.init()
+    tela = pygame.Surface((800, 600))
+    fontes = tuple(pygame.font.SysFont("Noto Sans", tamanho) for tamanho in (32, 16, 16))
+    eventos = [
+        pygame.event.Event(pygame.KEYDOWN, key=pygame.K_DOWN)
+        for _ in range(4)
+    ]
+    eventos.append(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN))
+    monkeypatch.setattr("game.screens_menu._desenhar_fundo", lambda *args: None)
+    monkeypatch.setattr("game.screens_menu.animar_transicao", lambda *args, **kwargs: None)
+    monkeypatch.setattr(pygame.event, "get", lambda: eventos)
+    monkeypatch.setattr(pygame.display, "flip", lambda: None)
+
+    fase = screens.tela_selecao_fase(
+        "asteroides", {"asteroides": 5}, tela, pygame.time.Clock(), fontes,
+        None, lambda evento: None,
+    )
+
+    assert fase == 5
+
+
+def test_trilha_de_fases_permite_iniciar_fase_dez_desbloqueada(monkeypatch):
+    pygame.init()
+    tela = pygame.Surface((800, 600))
+    fontes = tuple(pygame.font.SysFont("Noto Sans", tamanho) for tamanho in (32, 16, 16))
+    eventos = [
+        pygame.event.Event(pygame.KEYDOWN, key=pygame.K_DOWN)
+        for _ in range(9)
+    ]
+    eventos.append(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN))
+    monkeypatch.setattr("game.screens_menu._desenhar_fundo", lambda *args: None)
+    monkeypatch.setattr("game.screens_menu.animar_transicao", lambda *args, **kwargs: None)
+    monkeypatch.setattr(pygame.event, "get", lambda: eventos)
+    monkeypatch.setattr(pygame.display, "flip", lambda: None)
+
+    fase = screens.tela_selecao_fase(
+        "asteroides", {"asteroides": 10}, tela, pygame.time.Clock(), fontes,
+        None, lambda evento: None,
+    )
+
+    assert fase == 10
+
+
+def test_menu_pos_fase_disponibiliza_resgate_manual(monkeypatch):
+    pygame.init()
+    tela = pygame.Surface((800, 600))
+    fontes = tuple(pygame.font.SysFont("Noto Sans", tamanho) for tamanho in (32, 16, 16))
+    eventos = [
+        pygame.event.Event(pygame.KEYDOWN, key=pygame.K_DOWN),
+        pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN),
+    ]
+    textos = []
+    texto_original = screens.texto_com_borda
+
+    def registrar_texto(fonte, texto, cor, *args, **kwargs):
+        textos.append(texto)
+        return texto_original(fonte, texto, cor, *args, **kwargs)
+
+    monkeypatch.setattr("game.screens_results._desenhar_fundo", lambda *args: None)
+    monkeypatch.setattr("game.screens_results.animar_transicao", lambda *args, **kwargs: None)
+    monkeypatch.setattr("game.screens_results.texto_com_borda", registrar_texto)
+    monkeypatch.setattr(pygame.event, "get", lambda: eventos)
+    monkeypatch.setattr(pygame.display, "flip", lambda: None)
+
+    acao = screens.tela_pos_fase(
+        5, 1000, 50, "hyperion", tela, pygame.time.Clock(), fontes, None,
+        lambda evento: None,
+    )
+
+    assert acao == "resgatar"
+    assert any("Hyperion" in texto for texto in textos)
+
+
+def test_trilha_mostra_habitat_da_nave_escolhida(monkeypatch):
+    pygame.init()
+    tela = pygame.Surface((800, 600))
+    fontes = tuple(pygame.font.SysFont("Noto Sans", tamanho) for tamanho in (32, 16, 16))
+    fundo = pygame.Surface((800, 600))
+    fundo.fill((80, 80, 80))
+    textos = []
+    cores_fundo = []
+    eventos = [pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN)]
+    texto_original = screens.texto_com_borda
+
+    def registrar_texto(fonte, texto, cor, *args, **kwargs):
+        textos.append(texto)
+        return texto_original(fonte, texto, cor, *args, **kwargs)
+
+    def registrar_fundo(superficie, imagem):
+        superficie.blit(imagem, (0, 0))
+        cores_fundo.append(superficie.get_at((0, 0))[:3])
+
+    monkeypatch.setattr("game.screens_menu._desenhar_fundo", registrar_fundo)
+    monkeypatch.setattr("game.screens_menu.animar_transicao", lambda *args, **kwargs: None)
+    monkeypatch.setattr("game.screens_menu.texto_com_borda", registrar_texto)
+    monkeypatch.setattr(pygame.event, "get", lambda: eventos)
+    monkeypatch.setattr(pygame.display, "flip", lambda: None)
+
+    screens.tela_selecao_fase(
+        "asteroides", {"asteroides": 1}, tela, pygame.time.Clock(), fontes,
+        fundo, lambda evento: None, "Titan.png",
+    )
+
+    assert "HABITAT: Lua Vulcânica" in textos
+    assert cores_fundo[0] == (80, 80, 80)
+
+
 def test_botao_de_pausa_muda_cor_quando_ativo():
     fonte = pygame.font.SysFont("Noto Sans", 16)
     tela = pygame.Surface((100, 50))
@@ -179,6 +331,7 @@ def test_hud_titan_mostra_prontidao_e_tempo_restante(monkeypatch):
 
 
 def test_tela_boas_vindas_despacha_comandos_e_ranking(monkeypatch):
+    pygame.init()
     tela = pygame.Surface((800, 600))
     fontes = tuple(pygame.font.SysFont("Noto Sans", tamanho) for tamanho in (32, 16, 16))
     chamadas = []
@@ -190,6 +343,8 @@ def test_tela_boas_vindas_despacha_comandos_e_ranking(monkeypatch):
         pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN),
     ]
     atualizacoes = []
+    monkeypatch.setattr("game.screens_menu._desenhar_fundo", None)
+    monkeypatch.setattr("game.screens_menu.animar_transicao", lambda *args, **kwargs: None)
     monkeypatch.setattr(pygame.event, "get", lambda: [eventos.pop(0)])
     monkeypatch.setattr(pygame.display, "flip", lambda: None)
 
@@ -203,9 +358,11 @@ def test_tela_boas_vindas_despacha_comandos_e_ranking(monkeypatch):
     assert chamadas == ["comandos", "ranking", "conquistas"]
     assert len(atualizacoes) == 1
     assert atualizacoes[0].key == pygame.K_F11
+    assert tela.get_at((0, 0))[:3] == (5, 12, 30)
 
 
 def test_tela_conquistas_exibe_estado_e_fecha_com_escape(monkeypatch):
+    pygame.init()
     tela = pygame.Surface((800, 600))
     fontes = tuple(pygame.font.SysFont("Noto Sans", tamanho) for tamanho in (32, 16, 16))
     textos = []
@@ -228,13 +385,25 @@ def test_tela_conquistas_exibe_estado_e_fecha_com_escape(monkeypatch):
         None,
         lambda evento: None,
         lambda dados: [
-            {"nome": "Sobrevivente", "descricao": "Sobreviva cinco minutos.", "desbloqueada": False},
-            {"nome": "Intocável", "descricao": "Conclua sem dano.", "desbloqueada": True},
+            {
+                "nome": "Sobrevivente",
+                "descricao": "Sobreviva cinco minutos.",
+                "desbloqueada": False,
+                "recompensa": 5000,
+            },
+            {
+                "nome": "Intocável",
+                "descricao": "Conclua sem dano.",
+                "desbloqueada": True,
+                "recompensa": 2500,
+            },
         ],
     )
 
     assert "Sobrevivente - BLOQUEADA" in textos
     assert "Intocável - DESBLOQUEADA" in textos
+    assert "Recompensa: 5000 moedas" in textos
+    assert "Recompensa: 2500 moedas" in textos
 
 
 def test_tela_selecao_modo_retorna_modo_confirmado(monkeypatch):
@@ -271,17 +440,20 @@ def test_tela_selecao_modo_retorna_modo_confirmado(monkeypatch):
 
 
 def test_tela_selecao_nave_retorna_a_nave_selecionada(monkeypatch):
+    pygame.init()
     tela = pygame.Surface((800, 600))
     pygame.display.set_mode((800, 600))
     fontes = tuple(pygame.font.SysFont("Noto Sans", tamanho) for tamanho in (32, 16, 16))
     eventos = [pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN)]
     monkeypatch.setattr(pygame.event, "get", lambda: [eventos.pop(0)])
     monkeypatch.setattr(pygame.display, "flip", lambda: None)
-    monkeypatch.setattr(
-        pygame.image,
-        "load",
-        lambda path: pygame.Surface((200, 200), pygame.SRCALPHA),
-    )
+
+    def carregar_imagem(path):
+        if path.endswith("wrat.png"):
+            raise FileNotFoundError(path)
+        return pygame.Surface((200, 200), pygame.SRCALPHA)
+
+    monkeypatch.setattr(pygame.image, "load", carregar_imagem)
 
     nave = screens.tela_selecao_nave(
         {"moedas": 0, "naves_desbloqueadas": ["Vanguard.png"], "niveis_melhorias": {}},

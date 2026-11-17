@@ -80,6 +80,7 @@ def desenhar_hud_jogo(
     titan_restante=None,
     chefe_vida=None,
     chefe_vida_maxima=None,
+    rotulo_especial="Titan",
 ):
     modo_infinito = modo_jogo == "infinito"
     modo_frota = modo_jogo == "frota_inimiga"
@@ -154,10 +155,15 @@ def desenhar_hud_jogo(
     tela_surface.blit(texto_com_borda(fonte, texto_especial, cor_especial), (180, 173))
 
     if titan_restante is not None:
-        texto_duracao = f"Titan: {titan_restante:.1f}s"
+        texto_duracao = f"{rotulo_especial}: {titan_restante:.1f}s"
         tela_surface.blit(texto_com_borda(fonte, texto_duracao, AMARELO), (20, 205))
     elif modelo_nave == "titan":
         tela_surface.blit(texto_com_borda(fonte, "Titan: pronto", AZUL_NEON), (20, 205))
+    elif modelo_nave == "hellion":
+        tela_surface.blit(
+            texto_com_borda(fonte, "Hellion Core: pronto", AZUL_NEON),
+            (20, 205),
+        )
 
 
 def desenhar_tela_jogo(
@@ -190,6 +196,7 @@ def desenhar_tela_jogo(
         titan_restante=estado_hud.get("titan_restante"),
         chefe_vida=estado_hud.get("chefe_vida"),
         chefe_vida_maxima=estado_hud.get("chefe_vida_maxima"),
+        rotulo_especial=estado_hud.get("rotulo_especial", "Titan"),
     )
 
     if pausado:

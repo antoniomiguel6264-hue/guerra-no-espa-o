@@ -1,20 +1,43 @@
 {
-    "moedas": 12309,
+    "moedas": 16319,
     "naves_desbloqueadas": [
         "Vanguard.png",
         "Scout.png",
         "Titan.png",
         "Phantom.png",
-        "Aegis.png"
+        "Aegis.png",
+        "Hyperion.png",
+        "Wraith.png"
     ],
     "niveis_melhorias": {
         "velocidade": 22,
         "cadencia": 59,
         "especial": 42,
-        "dano": 1
+        "dano": 1,
+        "defesa": 1,
+        "vida": 1,
+        "manobrabilidade": 1,
+        "recarga": 1,
+        "recompensa": 1
     },
     "conquistas_desbloqueadas": [
         "intocavel",
         "sobrevivente"
+    ],
+    "fases_desbloqueadas": {
+        "asteroides": 10,
+        "frota_inimiga": 10
+    },
+    "recompensas_conquistas": [
+        "intocavel"
+    ],
+    "fases_concluidas_por_modo": {
+        "asteroides": 3,
+        "frota_inimiga": 9
+    },
+    "skins_desbloqueadas": [],
+    "recompensas_pendentes": [],
+    "recompensas_resgatadas": [
+        "hyperion"
     ]
 }

@@ -11,23 +11,50 @@ from game.entities.projectiles import (
     Tiro,
     TiroEspecial,
     TiroEspecialAegis,
+    TiroEspecialDreadnought,
+    TiroEspecialHellion,
+    TiroEspecialHyperion,
     TiroEspecialLaser,
+    TiroEspecialNova,
     TiroEspecialTitan,
 )
+from game.display import multiplicador_tamanho_em_jogo
+from game.ship_art import ARQUIVOS_IMAGEM_NAVE, criar_imagem_nave
 
 
 class Nave(pygame.sprite.Sprite):
     def __init__(self, x, y, imagem_path, niveis_melhorias=None):
         super().__init__()
-        self.modelo = os.path.splitext(os.path.basename(imagem_path))[0].lower()
-        caminho_imagem = resolver_caminho_arquivo(imagem_path)
+        modelo_imagem = os.path.splitext(os.path.basename(imagem_path))[0].lower()
+        self.modelo = {
+            "titan hellion core": "titan",
+        }.get(modelo_imagem, modelo_imagem)
+        self.habilidade_especial = (
+            "hellion" if modelo_imagem == "titan hellion core" else self.modelo
+        )
+        self.tamanho = round(84 * multiplicador_tamanho_em_jogo())
+        arquivo_imagem = ARQUIVOS_IMAGEM_NAVE.get(modelo_imagem, imagem_path)
+        caminho_imagem = resolver_caminho_arquivo(arquivo_imagem)
         try:
             self.image_original = pygame.image.load(caminho_imagem).convert_alpha()
-            self.image_original = pygame.transform.scale(self.image_original, (68, 68))
+            self.image_original = pygame.transform.scale(
+                self.image_original,
+                (self.tamanho, self.tamanho),
+            )
         except Exception as e:
             print(f"Erro ao carregar {imagem_path}: {e}. Usando placeholder.")
-            self.image_original = pygame.Surface((68, 68))
-            self.image_original.fill(AZUL_NEON)
+            if self.modelo in {
+                "tempest", "nova", "wraith",
+                "dreadnought", "vortex", "seraph",
+            }:
+                self.image_original = criar_imagem_nave(self.modelo)
+                self.image_original = pygame.transform.scale(
+                    self.image_original,
+                    (self.tamanho, self.tamanho),
+                )
+            else:
+                self.image_original = pygame.Surface((self.tamanho, self.tamanho))
+                self.image_original.fill(AZUL_NEON)
             
         self.image = self.image_original
         self.rect = self.image.get_rect()
@@ -53,7 +80,7 @@ class Nave(pygame.sprite.Sprite):
         self.angulo = 90
         nivel_manobrabilidade = max(1, int(self.niveis.get("manobrabilidade", 1)))
         self.velocidade_giro = (
-            2.2
+            1.5
             + (self.niveis["velocidade"] - 1) * 0.25
             + (nivel_manobrabilidade - 1) * 0.3
         )
@@ -71,6 +98,7 @@ class Nave(pygame.sprite.Sprite):
         self.dano_sofrido = False
         self.invulneravel = False
         self.tempo_invulneravel = 0
+        self.duracao_invulneravel = 1500
         self.aegis_ativo = False
         self.pontos_para_cura = 0
         
@@ -108,17 +136,18 @@ class Nave(pygame.sprite.Sprite):
         self.x += self.vx
         self.y += self.vy
 
-        if self.x < 25:
-            self.x = 25
+        limite = self.tamanho // 2
+        if self.x < limite:
+            self.x = limite
             self.vx = 0
-        elif self.x > config.LARGURA - 25:
-            self.x = config.LARGURA - 25
+        elif self.x > config.LARGURA - limite:
+            self.x = config.LARGURA - limite
             self.vx = 0
-        if self.y < 25:
-            self.y = 25
+        if self.y < limite:
+            self.y = limite
             self.vy = 0
-        elif self.y > config.ALTURA - 25:
-            self.y = config.ALTURA - 25
+        elif self.y > config.ALTURA - limite:
+            self.y = config.ALTURA - limite
             self.vy = 0
 
         self.rect.center = (int(self.x), int(self.y))
@@ -126,8 +155,12 @@ class Nave(pygame.sprite.Sprite):
         self.rect = self.image.get_rect(center=self.rect.center)
 
         if self.invulneravel:
-            if pygame.time.get_ticks() - self.tempo_invulneravel > 1500:
+            if pygame.time.get_ticks() - self.tempo_invulneravel > self.duracao_invulneravel:
                 self.invulneravel = False
+                self.duracao_invulneravel = 1500
+
+        if self.modelo == "wraith" and self.invulneravel:
+            self.image.set_alpha(120)
 
     def perder_vida(self, dano=20):
         if not self.invulneravel:
@@ -135,6 +168,7 @@ class Nave(pygame.sprite.Sprite):
             self.dano_sofrido = True
             self.invulneravel = True
             self.tempo_invulneravel = pygame.time.get_ticks()
+            self.duracao_invulneravel = 1500
             return self.vida <= 0
         return False
 
@@ -195,6 +229,12 @@ class Nave(pygame.sprite.Sprite):
             self.energia_especial = 0
             if self.modelo == "aegis":
                 self.aegis_ativo = True
+            elif self.modelo == "wraith":
+                self.invulneravel = True
+                self.tempo_invulneravel = pygame.time.get_ticks()
+                self.duracao_invulneravel = 3000
+            elif self.modelo == "seraph":
+                self.recuperar_vida(40)
             return True 
         return False
 
@@ -210,6 +250,65 @@ class Nave(pygame.sprite.Sprite):
                     velocidade=22, largura=4, comprimento=22,
                     cor=(90, 235, 255),
                 )
+            ]
+        elif self.modelo == "tempest":
+            tiros = [
+                Tiro(
+                    x, y, self.angulo + deslocamento,
+                    dano=1, velocidade=17, largura=5, comprimento=17,
+                    cor=(90, 225, 255),
+                )
+                for deslocamento in (-12, 0, 12)
+            ]
+        elif self.modelo == "nova":
+            tiros = [
+                Tiro(
+                    x, y, self.angulo,
+                    velocidade=10, dano=3, largura=12, comprimento=25,
+                    cor=(255, 155, 65),
+                )
+            ]
+        elif self.modelo == "wraith":
+            tiros = [
+                Tiro(
+                    x, y, self.angulo,
+                    velocidade=21, largura=4, comprimento=19,
+                    cor=(190, 130, 255),
+                )
+            ]
+        elif self.modelo == "dreadnought":
+            tiros = [
+                Tiro(
+                    x, y, self.angulo,
+                    velocidade=10, dano=4, largura=14, comprimento=26,
+                    cor=(255, 130, 65),
+                )
+            ]
+        elif self.modelo == "vortex":
+            rad = math.radians(self.angulo)
+            deslocamento_x = math.sin(rad) * 7
+            deslocamento_y = math.cos(rad) * 7
+            tiros = [
+                Tiro(
+                    x + sinal * deslocamento_x,
+                    y + sinal * deslocamento_y,
+                    self.angulo,
+                    dano=1,
+                    velocidade=23,
+                    largura=4,
+                    comprimento=18,
+                    cor=(100, 255, 205),
+                )
+                for sinal in (-1, 1)
+            ]
+        elif self.modelo == "seraph":
+            tiros = [
+                Tiro(
+                    x + sinal * 9, y, self.angulo,
+                    velocidade=18, largura=6, comprimento=20,
+                    cor=(255, 230, 130),
+                )
+                for sinal in (-1, 1)
             ]
         elif self.modelo == "titan":
             tiros = [
@@ -244,6 +343,16 @@ class Nave(pygame.sprite.Sprite):
                 )
             ]
 
+        elif self.modelo == "hyperion":
+            tiros = [
+                Tiro(
+                    x, y, self.angulo,
+                    velocidade=11, dano=5,
+                    largura=12, comprimento=28,
+                    cor=(100, 210, 255),
+                )
+            ]
+
         if tiros is None:
             tiros = [Tiro(x, y, self.angulo)]
 
@@ -256,6 +365,14 @@ class Nave(pygame.sprite.Sprite):
         x = self.rect.centerx
         y = self.rect.centery
 
+        if self.modelo == "hyperion":
+            return [
+                TiroEspecialHyperion(
+                    x,
+                    y,
+                    nivel=self.niveis["especial"],
+                )
+            ]
         if self.modelo == "vanguard":
             tiros = [
                 TiroEspecial(x, y, self.angulo - 12, tipo="vanguard", cor=(120, 220, 255)),
@@ -268,6 +385,69 @@ class Nave(pygame.sprite.Sprite):
             return tiros
         if self.modelo == "scout":
             return [TiroEspecialLaser(x, y, self.angulo)]
+        if self.modelo == "tempest":
+            tiros = [
+                TiroEspecial(
+                    x, y, self.angulo + deslocamento,
+                    tipo="tempest", cor=(80, 225, 255), velocidade=18,
+                )
+                for deslocamento in (-30, -15, 0, 15, 30)
+            ]
+            for tiro in tiros:
+                tiro.dano_inimigo = 1
+                tiro.limite_alvos = 1
+            return tiros
+        if self.modelo == "nova":
+            return [
+                TiroEspecialNova(
+                    x, y, self.angulo, nivel=self.niveis["especial"],
+                )
+            ]
+        if self.modelo == "wraith":
+            return []
+        if self.modelo == "dreadnought":
+            return [
+                TiroEspecialDreadnought(
+                    x,
+                    y,
+                    self.angulo,
+                    nivel=self.niveis["especial"],
+                )
+            ]
+        if self.modelo == "vortex":
+            tiros = [
+                TiroEspecial(
+                    x, y, self.angulo + deslocamento,
+                    tipo="vortex", cor=(90, 255, 220), velocidade=22,
+                )
+                for deslocamento in (-36, -24, -12, 0, 12, 24, 36)
+            ]
+            for tiro in tiros:
+                tiro.dano_inimigo = 2
+                tiro.limite_alvos = 2
+            return tiros
+        if self.modelo == "seraph":
+            tiros = [
+                TiroEspecial(
+                    x, y, self.angulo + deslocamento,
+                    tipo="seraph", cor=(255, 230, 140), velocidade=17,
+                )
+                for deslocamento in (-22, -11, 0, 11, 22)
+            ]
+            for tiro in tiros:
+                tiro.dano_inimigo = 3
+                tiro.limite_alvos = 2
+            return tiros
+        if self.habilidade_especial == "hellion":
+            duracao = 60 + max(0, self.niveis["especial"] - 1) * 12
+            return [
+                TiroEspecialHellion(
+                    x,
+                    y,
+                    duracao=duracao,
+                    nivel=self.niveis["especial"],
+                )
+            ]
         if self.modelo == "titan":
             duracao = 36 + max(0, self.niveis["especial"] - 1) * 12
             return [TiroEspecialTitan(x, y, duracao=duracao, nivel=self.niveis["especial"])]

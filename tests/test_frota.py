@@ -22,10 +22,16 @@ from entidades import (
     Nave,
     NaveInimiga,
     Tiro,
+    TiroEspecialDreadnought,
+    TiroEspecialHellion,
+    TiroEspecialHyperion,
+    TiroEspecialNova,
     TiroEspecialTitan,
     calcular_meta_frota,
     gerar_frota_inimiga,
 )
+from game.screens_hangar import NAVES_DISPONIVEIS
+from game.ship_art import ARQUIVOS_IMAGEM_NAVE, criar_imagem_nave
 from salvamento import listar_ranking, salvar_pontuacao
 
 
@@ -55,13 +61,36 @@ def test_modo_frota_nao_cria_asteroides():
 def test_frota_inimiga_tem_vida_e_tiro_fraco():
     nave = NaveInimiga(100, 100, fase_atual=2)
     assert nave.vida >= 3
+    assert nave.tamanho == 60
 
     alvo = main.Nave(200, 300, "Vanguard.png")
+    assert alvo.image_original.get_size() == (84, 84)
     tiro = nave.criar_tiro(alvo)
 
     assert tiro is not None
     assert tiro.velocidade < 10
     assert tiro.dano == 1
+
+
+def test_tamanho_de_naves_aumenta_ainda_mais_em_tela_cheia(monkeypatch):
+    pygame.init()
+    pygame.display.set_mode((800, 600))
+    monkeypatch.setattr(
+        "game.entities.player.multiplicador_tamanho_em_jogo",
+        lambda: 1.35,
+    )
+    monkeypatch.setattr(
+        "game.entities.enemies.multiplicador_tamanho_em_jogo",
+        lambda: 1.35,
+    )
+
+    jogador = Nave(400, 300, "Vanguard.png")
+    inimigo = NaveInimiga(100, 100, fase_atual=2)
+    chefe = ChefeFrota(400, 90, fase_atual=2)
+
+    assert jogador.image_original.get_size() == (113, 113)
+    assert inimigo.tamanho == 81
+    assert chefe.image.get_width() > 216 or chefe.image.get_height() > 144
 
 
 def test_chefe_frota_tem_vida_escalavel_e_alternancia_de_salvas():
@@ -73,11 +102,11 @@ def test_chefe_frota_tem_vida_escalavel_e_alternancia_de_salvas():
     chefe.cooldown_tiro = 0
     segunda_salva = chefe.criar_tiros(alvo)
 
-    assert chefe.vida == chefe.vida_maxima == 200
+    assert chefe.vida == chefe.vida_maxima == 300
     assert len(primeira_salva) == len(segunda_salva) == 3
-    assert {tiro.velocidade for tiro in primeira_salva} == {5}
-    assert {tiro.velocidade for tiro in segunda_salva} == {7}
-    assert chefe.cooldown_tiro > 0
+    assert {tiro.velocidade for tiro in primeira_salva} == {6}
+    assert {tiro.velocidade for tiro in segunda_salva} == {8}
+    assert chefe.cooldown_tiro == 48
 
 
 def test_chefe_carrega_imagem_correspondente_a_fase(monkeypatch):
@@ -103,8 +132,8 @@ def test_chefe_carrega_imagem_correspondente_a_fase(monkeypatch):
             f"{nome_esperado.removesuffix('.png')}.jpg",
             nome_esperado,
         ]
-        assert chefe.image.get_width() <= 180
-        assert chefe.image.get_height() <= 120
+        assert chefe.image.get_width() <= 216
+        assert chefe.image.get_height() <= 144
 
 
 def test_tiro_basico_tem_mais_dano_e_velocidade():
@@ -145,6 +174,204 @@ def test_tiros_basicos_variem_por_modelo_mantendo_dano_total_equilibrado():
         for tiros in todos_os_tiros
     )
     assert len({(tiro.rect.centerx, tiro.rect.centery) for tiro in phantom}) == 2
+
+
+def test_hangar_adiciona_tres_naves_com_visuais_e_precos_proprios():
+    novas_naves = {
+        nave["nome"]: nave
+        for nave in NAVES_DISPONIVEIS
+        if nave["nome"] in {"Tempest", "Nova", "Wraith"}
+    }
+
+    assert len(NAVES_DISPONIVEIS) == 13
+    assert {nome: nave["preco"] for nome, nave in novas_naves.items()} == {
+        "Tempest": 350,
+        "Nova": 450,
+        "Wraith": 550,
+    }
+    assert {
+        nome: nave["imagem"]
+        for nome, nave in novas_naves.items()
+    } == {
+        "Tempest": "Tempest .png",
+        "Nova": "nova.jpg",
+        "Wraith": "wrat.png",
+    }
+    naves_premium = {
+        nave["nome"]: nave
+        for nave in NAVES_DISPONIVEIS
+        if nave["nome"] in {"Dreadnought", "Vortex", "Seraph"}
+    }
+    assert {
+        nome: nave["imagem"]
+        for nome, nave in naves_premium.items()
+    } == {
+        "Dreadnought": "Dreadnought.png",
+        "Vortex": "Vortex .png",
+        "Seraph": "Seraph.png",
+    }
+    recompensas = {
+        nave["nome"]: nave
+        for nave in NAVES_DISPONIVEIS
+        if nave["nome"] in {"Hyperion", "Titan Hellion Core"}
+    }
+    assert recompensas["Hyperion"]["preco"] is None
+    assert recompensas["Hyperion"]["recompensa"] == "hyperion"
+    assert recompensas["Titan Hellion Core"]["preco"] is None
+    assert recompensas["Titan Hellion Core"]["id_skin"] == "titan_hellion_core"
+    assert {
+        modelo: ARQUIVOS_IMAGEM_NAVE[modelo]
+        for modelo in ("tempest", "nova", "wraith")
+    } == {
+        "tempest": "Tempest .png",
+        "nova": "nova.jpg",
+        "wraith": "wrat.png",
+    }
+    for modelo in ("tempest", "nova", "wraith"):
+        imagem = criar_imagem_nave(modelo)
+        assert imagem.get_size() == (200, 200)
+        assert imagem.get_bounding_rect().width > 0
+
+
+def test_naves_premium_custam_mais_de_dez_mil_e_tem_especiais_diferentes():
+    naves_premium = {
+        nave["nome"]: nave
+        for nave in NAVES_DISPONIVEIS
+        if nave["nome"] in {"Dreadnought", "Vortex", "Seraph"}
+    }
+    assert {nome: nave["preco"] for nome, nave in naves_premium.items()} == {
+        "Dreadnought": 12500,
+        "Vortex": 15000,
+        "Seraph": 20000,
+    }
+    assert all(nave["preco"] > 10000 for nave in naves_premium.values())
+
+    dreadnought = Nave(100, 100, "Dreadnought.png")
+    vortex = Nave(100, 100, "Vortex.png")
+    seraph = Nave(100, 100, "Seraph.png")
+    assert dreadnought.criar_tiros_basicos()[0].dano_inimigo == 4
+    assert len(vortex.criar_tiros_basicos()) == 2
+    assert len(seraph.criar_tiros_basicos()) == 2
+    especial_dreadnought = dreadnought.criar_tiro_especial()[0]
+    assert isinstance(especial_dreadnought, TiroEspecialDreadnought)
+    assert especial_dreadnought.tipo == "dreadnought"
+    assert especial_dreadnought.velocidade > 0
+    assert len(vortex.criar_tiro_especial()) == 7
+    assert len(seraph.criar_tiro_especial()) == 5
+
+    seraph.vida = 50
+    seraph.energia_especial = seraph.energia_maxima
+    assert seraph.disparar_especial()
+    assert seraph.vida == 90
+
+
+def test_novas_naves_tentam_carregar_os_arquivos_configurados(monkeypatch):
+    caminhos_carregados = []
+
+    def carregar_imagem(caminho):
+        caminhos_carregados.append(os.path.basename(caminho))
+        raise pygame.error("imagem ausente no teste")
+
+    monkeypatch.setattr(pygame.image, "load", carregar_imagem)
+
+    for arquivo_nave in ("Tempest.png", "Nova.png", "Wraith.png"):
+        Nave(100, 100, arquivo_nave)
+
+    assert caminhos_carregados == ["Tempest .png", "nova.jpg", "wrat.png"]
+
+
+def test_naves_premium_carregam_os_pngs_configurados(monkeypatch):
+    caminhos_carregados = []
+
+    def carregar_imagem(caminho):
+        caminhos_carregados.append(os.path.basename(caminho))
+        raise pygame.error("imagem ausente no teste")
+
+    monkeypatch.setattr(pygame.image, "load", carregar_imagem)
+
+    for arquivo_nave in ("Dreadnought.png", "Vortex.png", "Seraph.png"):
+        Nave(100, 100, arquivo_nave)
+
+    assert caminhos_carregados == [
+        "Dreadnought.png",
+        "Vortex .png",
+        "Seraph.png",
+    ]
+
+
+def test_novas_naves_tem_disparos_e_especiais_proprios(monkeypatch):
+    tempest = Nave(100, 100, "Tempest.png")
+    nova = Nave(100, 100, "Nova.png")
+    wraith = Nave(100, 100, "Wraith.png")
+
+    tiros_tempest = tempest.criar_tiros_basicos()
+    tiro_nova = nova.criar_tiros_basicos()[0]
+    tiro_wraith = wraith.criar_tiros_basicos()[0]
+    especiais_tempest = tempest.criar_tiro_especial()
+    especial_nova = nova.criar_tiro_especial()[0]
+
+    assert len(tiros_tempest) == 3
+    assert sum(tiro.dano_inimigo for tiro in tiros_tempest) == 3
+    assert tiro_nova.dano_inimigo == 3
+    assert tiro_nova.velocidade < 16
+    assert tiro_wraith.velocidade > 16
+    assert len(especiais_tempest) == 5
+    assert all(tiro.tipo == "tempest" and tiro.limite_alvos == 1 for tiro in especiais_tempest)
+    assert isinstance(especial_nova, TiroEspecialNova)
+    assert especial_nova.dano_inimigo == 3 and especial_nova.limite_alvos == 4
+
+    agora = [100]
+    monkeypatch.setattr(pygame.time, "get_ticks", lambda: agora[0])
+    wraith.energia_especial = wraith.energia_maxima
+    vida_inicial = wraith.vida
+    assert wraith.disparar_especial()
+    assert wraith.invulneravel
+    assert wraith.criar_tiro_especial() == []
+    assert not wraith.perder_vida()
+    assert wraith.vida == vida_inicial
+
+    teclas = {
+        pygame.K_q: False,
+        pygame.K_e: False,
+        pygame.K_UP: False,
+        pygame.K_w: False,
+    }
+    agora[0] = 3101
+    wraith.update(teclas)
+    assert not wraith.invulneravel
+
+
+def test_hyperion_usa_canhao_pesado_e_anel_eletrico_expansivo():
+    pygame.init()
+    hyperion = Nave(100, 100, "Hyperion.png")
+
+    tiro = hyperion.criar_tiros_basicos()[0]
+    especial = hyperion.criar_tiro_especial()[0]
+    asteroide_no_anel = pygame.sprite.Sprite()
+    asteroide_no_anel.rect = pygame.Rect(193, 93, 14, 14)
+    asteroide_longe = pygame.sprite.Sprite()
+    asteroide_longe.rect = pygame.Rect(390, 390, 20, 20)
+
+    assert tiro.velocidade == 11
+    assert tiro.dano_inimigo == 5
+    assert tiro.image_original.get_size() == (12, 28)
+    assert isinstance(especial, TiroEspecialHyperion)
+    assert especial.tipo == "hyperion"
+    assert especial.raio == 0
+    assert not especial.atinge_asteroide(asteroide_no_anel)
+
+    for _ in range(10):
+        especial.update()
+
+    assert especial.raio == 90
+    assert especial.atinge_asteroide(asteroide_no_anel)
+    assert not especial.atinge_asteroide(asteroide_longe)
+    assert any(
+        especial.image.get_at((x, y)).b > especial.image.get_at((x, y)).r
+        and especial.image.get_at((x, y)).a > 0
+        for x in range(especial.image.get_width())
+        for y in range(especial.image.get_height())
+    )
 
 
 def test_upgrade_de_dano_aumenta_dano_total_dos_tiros_basicos():
@@ -214,6 +441,7 @@ def test_jogador_ganha_energia_proporcional_ao_dano():
 
 
 def test_upgrades_de_vida_manobrabilidade_e_recarga_alteram_a_nave():
+    pygame.init()
     base = Nave(100, 100, "Vanguard.png")
     aprimorada = Nave(
         100,
@@ -231,6 +459,7 @@ def test_upgrades_de_vida_manobrabilidade_e_recarga_alteram_a_nave():
     )
 
     assert aprimorada.vida_maxima == 140
+    assert base.velocidade_giro == 1.5
     assert aprimorada.velocidade_giro > base.velocidade_giro
     aprimorada.adicionar_energia_por_dano(5)
     assert aprimorada.energia_especial == 3
@@ -291,6 +520,45 @@ def test_titan_aumenta_duracao_do_especial_com_upgrade():
 
     assert isinstance(especial, TiroEspecialTitan)
     assert especial.vida > 36
+
+
+def test_skin_hellion_tem_especial_de_fogo_continuo_em_area():
+    titan = Nave(100, 100, "Titan.png")
+    hellion = Nave(100, 100, "titan Hellion Core.png")
+    especial_titan = titan.criar_tiro_especial()[0]
+    especial_hellion = hellion.criar_tiro_especial()[0]
+    inimigo = pygame.sprite.Sprite()
+
+    assert hellion.modelo == "titan"
+    assert hellion.habilidade_especial == "hellion"
+    assert isinstance(especial_hellion, TiroEspecialHellion)
+    assert especial_hellion.tipo == "hellion"
+    assert especial_hellion.raio > especial_titan.raio
+    assert especial_hellion.vida > especial_titan.vida
+    assert especial_hellion.registrar_tick_dano(inimigo)
+    assert not especial_hellion.registrar_tick_dano(inimigo)
+    for _ in range(12):
+        especial_hellion.update()
+    assert especial_hellion.registrar_tick_dano(inimigo)
+
+
+def test_especial_dreadnought_explode_em_area_ao_atingir_alvo():
+    especial = Nave(100, 100, "Dreadnought.png").criar_tiro_especial()[0]
+    alvo = pygame.sprite.Sprite()
+    alvo.rect = pygame.Rect(180, 100, 20, 20)
+    fora_do_raio = pygame.sprite.Sprite()
+    fora_do_raio.rect = pygame.Rect(
+        180 + especial.raio_explosao * 2,
+        100,
+        20,
+        20,
+    )
+
+    assert especial.tipo == "dreadnought"
+    assert especial.rect.center == (100, 100)
+    assert especial.atinge_alvo_na_explosao(alvo, 100, 100)
+    assert not especial.atinge_alvo_na_explosao(fora_do_raio, 100, 100)
+    assert especial.dano_central > especial.dano_explosao
 
 
 def test_titan_especial_tem_raio_limitado_e_dano_escalavel():
